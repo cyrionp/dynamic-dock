@@ -1,0 +1,89 @@
+[package]
+name = "dynamic-dock"
+version = "0.1.0"
+description = "A fast, animated, fully customisable dock that replaces the Windows 11 taskbar"
+authors = ["cyrionp"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cyrionp/dynamic-dock"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+# The `_lib` suffix avoids a name clash with the binary on Windows.
+name = "dynamic_dock_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  # Now playing (GSMTC) and audio devices, as in Dynamic Peninsula.
+  "Foundation",
+  "Foundation_Collections",
+  "Media_Control",
+  "Storage_Streams",
+  "Devices_Enumeration",
+  "Media_Devices",
+  # Master volume (Core Audio).
+  "Win32_Media_Audio",
+  "Win32_Media_Audio_Endpoints",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
+  # Replacing the taskbar, tracking windows, icons, shortcuts.
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_Graphics_Gdi",
+  "Win32_Storage_EnhancedStorage",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Power",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Registry",
+  "Win32_System_Shutdown",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_Common",
+  "Win32_UI_Shell_PropertiesSystem",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Accessibility",
+  # Network speed.
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
+] }
+windows-collections = "0.3"
+# The `#[interface]` macro (IPolicyConfig) expands to paths in this crate.
+windows-core = "0.62"
+windows-future = "0.3"
+# App icons are sent to the dock as small PNGs.
+png = "0.17"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# Update check against the latest GitHub Release, and restarting afterwards.
+# Native TLS (SChannel on Windows): no C toolchain needed, smaller binary.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "zip"] }
+tauri-plugin-process = "2"
+# Optional "start with Windows" (a Run registry entry).
+tauri-plugin-autostart = "2"
+# Switching bars from anywhere.
+tauri-plugin-global-shortcut = "2"
+# A second launch opens Settings instead of a second dock.
+tauri-plugin-single-instance = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
