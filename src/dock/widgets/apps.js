@@ -8,6 +8,7 @@ import { escapeHtml, baseName, prettyName } from "../../lib/util.js";
 import { t } from "../../lib/i18n.js";
 import { tasks, paintIcon } from "../data.js";
 import { demo } from "../demo.js";
+import { load, save } from "../../lib/store.js";
 
 const lower = (s) => String(s || "").toLowerCase();
 
@@ -44,6 +45,31 @@ async function installedApps() {
   return installedCache;
 }
 
+/** Puts the entries in the order the user left them (`order`, a list of
+ * keys). An entry not in it yet goes after the pinned entry before it, or at
+ * the end when it is only running, so pins and open apps can be mixed. */
+export function arrange(natural, order) {
+  const byKey = new Map();
+  for (const e of natural) if (!byKey.has(e.key)) byKey.set(e.key, e);
+  const out = [];
+  for (const k of order) {
+    const e = byKey.get(k);
+    if (e && !out.includes(e)) out.push(e);
+  }
+  const pinned = [...byKey.values()].filter((e) => e.pin);
+  pinned.forEach((e, i) => {
+    if (out.includes(e)) return;
+    const before = pinned.slice(0, i).reverse().find((p) => out.includes(p));
+    const after = pinned.slice(i + 1).find((p) => out.includes(p));
+    const at = before ? out.indexOf(before) + 1 : after ? out.indexOf(after) : 0;
+    out.splice(at, 0, e);
+  });
+  for (const e of byKey.values()) if (!out.includes(e)) out.push(e);
+  return out;
+}
+
+const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
 /** What pinning a running window stores. */
 function pinFromWindow(w) {
   const aumid = w.appId && !w.appId.includes("\\") ? w.appId : null;
@@ -67,6 +93,16 @@ export const apps = {
     let entries = [];
     const launching = new Map(); // key → timer
     let lastFocus = new Map(); // key → index for "cycle"
+    // The order of the icons, shared by the dock on every screen and kept
+    // across restarts, so a pinned or dragged app stays where it was put.
+    const orderKey = `apps.order.${item.uid}`;
+    let order = load(orderKey, []);
+    if (!Array.isArray(order)) order = [];
+    const setOrder = (keys) => {
+      if (sameList(keys, order)) return;
+      order = keys;
+      save(orderKey, keys);
+    };
 
     function build() {
       const o = item.opts;
@@ -83,13 +119,39 @@ export const apps = {
         const groups = new Map();
         for (const w of windows) {
           if (used.has(w.hwnd)) continue;
-          const key = o.group ? `g:${lower(w.appId)}` : `w:${w.hwnd}`;
+          const key = runningKey(w);
           if (!groups.has(key)) groups.set(key, { key, pin: null, wins: [] });
           groups.get(key).wins.push(w);
         }
         out.push(...groups.values());
       }
-      return out;
+      const arranged = arrange(out, order);
+      setOrder(arranged.map((e) => e.key));
+      return arranged;
+    }
+
+    /** The key a running window gets when it is not pinned. */
+    const runningKey = (w) => (item.opts.group ? `g:${lower(w.appId)}` : `w:${w.hwnd}`);
+
+    /** Pins a running app right where its icon is. */
+    function pinInPlace(e) {
+      const pin = pinFromWindow(e.wins[0]);
+      const key = `p:${lower(pin.id)}`;
+      const at = entries.indexOf(e);
+      const pinnedBefore = entries.slice(0, at).filter((x) => x.pin).length;
+      const pins = item.opts.pinned.slice();
+      pins.splice(pinnedBefore, 0, pin);
+      setOrder(entries.map((x) => (x === e ? key : x.key)).filter((k, i, all) => all.indexOf(k) === i));
+      setPinned(pins);
+    }
+
+    /** Unpins; an app that is still open keeps its place. */
+    function unpin(e) {
+      const keys = entries.map((x) => x.key);
+      if (e.wins.length) keys[entries.indexOf(e)] = runningKey(e.wins[0]);
+      else keys.splice(entries.indexOf(e), 1);
+      setOrder(keys);
+      setPinned(item.opts.pinned.filter((p) => p !== e.pin));
     }
 
     function cellHtml(e) {
@@ -243,9 +305,9 @@ export const apps = {
       items.push({ label: t("New window"), icon: "plus", action: () => launch(e, c) });
       items.push({ label: t("Run as administrator"), icon: "shield", action: () => launch(e, c, true) });
       if (e.pin) {
-        items.push({ label: t("Unpin from the dock"), icon: "unpin", action: () => setPinned(item.opts.pinned.filter((p) => p !== e.pin)) });
+        items.push({ label: t("Unpin from the dock"), icon: "unpin", action: () => unpin(e) });
       } else if (e.wins[0]) {
-        items.push({ label: t("Pin to the dock"), icon: "pin", action: () => setPinned([...item.opts.pinned, pinFromWindow(e.wins[0])]) });
+        items.push({ label: t("Pin to the dock"), icon: "pin", action: () => pinInPlace(e) });
       }
       items.push({ label: t("Pin an app…"), icon: "plus", action: () => pickApp(c) });
       if (e.wins.length === 1) {
@@ -356,7 +418,7 @@ export const apps = {
       });
     }
 
-    /* ---------- dragging pinned apps to reorder ---------- */
+    /* ---------- dragging apps to reorder ---------- */
 
     let drag = null;
     el.addEventListener("pointerdown", (ev) => {
@@ -394,17 +456,16 @@ export const apps = {
         return ev.clientX < r.left + r.width / 2;
       });
       if (index < 0) index = others.length;
-      const e = entryOf(c);
-      const pins = item.opts.pinned.slice();
-      const pin = e.pin ?? pinFromWindow(e.wins[0]);
-      const from = pins.indexOf(e.pin);
-      if (from >= 0) pins.splice(from, 1);
-      // Dropped among the pinned ones: becomes pinned there.
-      const pinnedBefore = others.slice(0, index).filter((x) => x.classList.contains("is-pinned")).length;
-      if (index <= others.filter((x) => x.classList.contains("is-pinned")).length || e.pin) {
-        pins.splice(Math.min(pinnedBefore, pins.length), 0, pin);
-        setPinned(pins);
-      }
+      // Any icon can go anywhere; the pins keep the same order as on screen.
+      const keys = others.map((x) => x.dataset.key);
+      keys.splice(index, 0, c.dataset.key);
+      setOrder(keys);
+      const byKey = new Map(entries.map((x) => [x.key, x]));
+      const shownPins = keys.map((k) => byKey.get(k)?.pin).filter(Boolean);
+      const rest = item.opts.pinned.filter((p) => !shownPins.includes(p));
+      const pins = [...shownPins, ...rest];
+      if (sameList(pins, item.opts.pinned)) paint();
+      else setPinned(pins);
       c._dragged = true;
       setTimeout(() => (c._dragged = false), 50);
     };
