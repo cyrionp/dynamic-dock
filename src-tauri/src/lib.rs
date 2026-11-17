@@ -9,6 +9,7 @@ mod apps;
 mod audio;
 mod config;
 mod icons;
+mod log;
 mod media;
 mod shell;
 mod system;
@@ -37,7 +38,20 @@ pub fn watchdog(pid: u32) {
 
 /// `--restore-taskbar`: put the Windows taskbar back and quit.
 pub fn restore_taskbar_now() {
-    shell::restore_now();
+    shell::restore_command();
+}
+
+/// The dock page says it is drawn and running, once a second.
+#[tauri::command]
+fn dock_alive() {
+    shell::heartbeat();
+}
+
+/// An error from one of the pages, for the log file.
+#[tauri::command]
+fn log_message(message: String) {
+    let message: String = message.chars().take(2000).collect();
+    log::write(&format!("page: {message}"));
 }
 
 /* ---------------- click-through ---------------- */
@@ -483,8 +497,10 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Whatever goes wrong, the user gets their taskbar back.
+    log::init();
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        log::write(&format!("panic: {info}"));
         shell::shutdown();
         default_hook(info);
     }));
@@ -545,7 +561,9 @@ pub fn run() {
             settings_ready,
             quit_app,
             set_taskbar_paused,
-            set_tray_labels
+            set_tray_labels,
+            dock_alive,
+            log_message
         ])
         .setup(|app| {
             let handle = app.handle();
@@ -567,6 +585,7 @@ pub fn run() {
 
     app.run(|_app, event| {
         if let RunEvent::Exit = event {
+            log::write("exiting");
             shell::shutdown();
         }
     });

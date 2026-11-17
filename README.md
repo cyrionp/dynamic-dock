@@ -39,13 +39,24 @@ JavaScript and CSS, so the whole app stays small and light on RAM and CPU.
 
 The dock restores the Windows taskbar when it exits, when it crashes, when
 Windows shuts down and when its process is killed (a small watchdog process
-does this). If the taskbar still stays hidden, run:
+does this). It also only hides the taskbar while the dock page is drawn and
+answering, so a dock that fails to load or hangs gives the taskbar back.
+
+If the taskbar still stays hidden, press **Win+R** and run:
 
 ```
-dynamic-dock.exe --restore-taskbar
+"%LOCALAPPDATA%\Dynamic Dock\dynamic-dock.exe" --restore-taskbar
 ```
 
-or right-click the dock's tray icon and tick **Show the Windows taskbar for now**.
+This ends every running Dynamic Dock process and shows the taskbar again.
+Right-clicking the dock's tray icon and ticking **Show the Windows taskbar for
+now** does the same without quitting.
+
+## Logs
+
+`%LOCALAPPDATA%\DynamicDock\dock.log` records what the dock did: taking or
+giving back the taskbar, where it placed its window, full-screen changes,
+Explorer restarts, crashes and page errors. Attach it when reporting a bug.
 
 ## Development
 
