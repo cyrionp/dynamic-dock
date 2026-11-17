@@ -151,8 +151,22 @@ fn section<T: for<'de> Deserialize<'de> + Default>(key: &str) -> T {
         .unwrap_or_default()
 }
 
+/// The bits of `look` that change where the dock goes.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct Look {
+    style: String,
+}
+
 pub fn shell() -> Shell {
-    section("shell")
+    let mut shell: Shell = section("shell");
+    // The full width bar sits right on the screen edge, so the distance from
+    // the edge doesn't apply: keeping it would leave an empty strip above
+    // the bar that windows can't use.
+    if section::<Look>("look").style == "full" {
+        shell.margin = 0.0;
+    }
+    shell
 }
 
 pub fn hotkeys() -> Hotkeys {

@@ -50,7 +50,8 @@ function applyConfig() {
   setLang(config.lang);
   applyLook(root, look, env);
   root.style.setProperty("--bar-h", `${shell.barHeight}px`);
-  root.style.setProperty("--margin", `${shell.margin}px`);
+  // Same as Rust: the full width bar sits on the edge, with no margin.
+  root.style.setProperty("--margin", `${look.style === "full" ? 0 : shell.margin}px`);
   root.style.setProperty("--speed", String(1 / Math.max(0.25, motion.speed)));
   root.dataset.position = shell.position;
   root.dataset.reduce = String(motion.reduce || matchMedia("(prefers-reduced-motion: reduce)").matches);
