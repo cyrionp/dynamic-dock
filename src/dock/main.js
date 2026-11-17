@@ -462,6 +462,22 @@ function offerUpdate(s) {
   });
 }
 
+// Errors go to the log file (%LOCALAPPDATA%\DynamicDock\dock.log).
+function report(what) {
+  call("log_message", { message: String(what) }).catch(() => {});
+}
+window.addEventListener("error", (e) => report(`${e.message} (${e.filename}:${e.lineno})`));
+window.addEventListener("unhandledrejection", (e) => report(e.reason?.stack || e.reason));
+
+// Tells Rust the page is drawn and running. Rust only hides the Windows
+// taskbar while these keep coming, so a broken page never leaves the user
+// with no taskbar at all.
+function startHeartbeat() {
+  const beat = () => call("dock_alive").catch(() => {});
+  beat();
+  setInterval(beat, 1000);
+}
+
 async function boot() {
   config = await loadConfig();
   applyConfig();
@@ -507,4 +523,6 @@ async function boot() {
   }
 }
 
-boot();
+boot()
+  .then(() => requestAnimationFrame(startHeartbeat))
+  .catch((e) => report(`boot failed: ${e?.stack || e}`));

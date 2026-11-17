@@ -44,7 +44,7 @@ pub struct Env {
 }
 
 #[cfg(windows)]
-pub use imp::{env, init, restore_now, set_paused, shutdown, watchdog};
+pub use imp::{env, heartbeat, init, restore_command, set_paused, shutdown, watchdog};
 
 #[cfg(not(windows))]
 mod fallback {
@@ -57,30 +57,37 @@ mod fallback {
     }
     pub fn set_paused(_paused: bool) {}
     pub fn shutdown() {}
-    pub fn restore_now() {}
+    pub fn restore_command() {}
+    pub fn heartbeat() {}
     pub fn watchdog(_pid: u32) {}
 }
 
 #[cfg(not(windows))]
-pub use fallback::{env, init, restore_now, set_paused, shutdown, watchdog};
+pub use fallback::{env, heartbeat, init, restore_command, set_paused, shutdown, watchdog};
 
 #[cfg(windows)]
 mod imp {
     use super::{Env, DOCK, ENV_EVENT};
     use crate::config;
+    use crate::log::log;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Mutex;
-    use std::time::Duration;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
     use tauri::{AppHandle, Emitter, Manager};
     use windows::core::{w, BOOL, PCWSTR};
-    use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
+    use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, POINT, RECT};
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO,
         MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY,
     };
     use windows::Win32::System::Registry::{RegGetValueW, HKEY, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
-    use windows::Win32::System::Threading::{OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE};
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::System::Threading::{
+        OpenProcess, TerminateProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    };
     use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
     use windows::Win32::UI::Shell::{
         SHAppBarMessage, SHQueryUserNotificationState, ABE_BOTTOM, ABE_TOP, ABM_GETSTATE, ABM_NEW,
@@ -88,10 +95,10 @@ mod imp {
         QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, FindWindowW, GetClassNameW, GetForegroundWindow, GetWindowRect,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetWindowPos, ShowWindow, HWND_TOPMOST,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE,
-        WM_APP,
+        EnumWindows, FindWindowW, GetClassNameW, GetForegroundWindow, GetWindowLongW, GetWindowRect,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, SetWindowPos, ShowWindow, GWL_STYLE,
+        HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE,
+        WM_APP, WS_CAPTION,
     };
 
     const TICK: Duration = Duration::from_millis(200);
@@ -111,6 +118,37 @@ mod imp {
     /// The app bar is registered.
     static REGISTERED: AtomicBool = AtomicBool::new(false);
 
+    /* ---------------- is the dock page alive? ---------------- */
+
+    /// The dock page calls `heartbeat` every second once it has drawn
+    /// itself. The taskbar is only taken over while it does: a page that
+    /// never loads, or a web view that crashed or hung, must never leave
+    /// the user with neither the dock nor the taskbar.
+    const STALE_AFTER: Duration = Duration::from_secs(15);
+    static START: OnceLock<Instant> = OnceLock::new();
+    /// Milliseconds since START of the last heartbeat, plus one; 0 = never.
+    static LAST_BEAT: AtomicU64 = AtomicU64::new(0);
+
+    fn now_ms() -> u64 {
+        START.get_or_init(Instant::now).elapsed().as_millis() as u64 + 1
+    }
+
+    pub fn heartbeat() {
+        if LAST_BEAT.swap(now_ms(), Ordering::Relaxed) == 0 {
+            log!("dock page is up");
+        }
+    }
+
+    /// `None`: the page hasn't drawn yet. `Some(false)`: it stopped.
+    fn page_alive(grace_until: u64) -> Option<bool> {
+        let beat = LAST_BEAT.load(Ordering::Relaxed);
+        if beat == 0 {
+            return None;
+        }
+        let now = now_ms();
+        Some(now < grace_until || now.saturating_sub(beat) < STALE_AFTER.as_millis() as u64)
+    }
+
     pub fn env() -> Env {
         ENV.lock().ok().and_then(|e| e.clone()).unwrap_or_default()
     }
@@ -120,6 +158,7 @@ mod imp {
     }
 
     pub fn init(app: &AppHandle) {
+        now_ms();
         // A crash last time may have left the taskbar hidden: put it back
         // first; the loop takes it over again if the settings say so.
         restore_now();
@@ -171,11 +210,49 @@ mod imp {
     /// is there. Safe to call any time, from any process.
     pub fn restore_now() {
         if let Some(state) = read_journal() {
+            log!("restoring the taskbar (state {state})");
             set_taskbar_state(state);
-            show_native(true);
             delete_journal();
         }
+        // Even without a journal: a hidden taskbar is never what we want
+        // when restoring.
+        show_native(true);
         REPLACED.store(false, Ordering::Relaxed);
+    }
+
+    /// `--restore-taskbar`: ends every other Dynamic Dock process (a running
+    /// dock would hide the taskbar again at once), then restores it.
+    pub fn restore_command() {
+        log!("--restore-taskbar");
+        let me = std::process::id();
+        let name = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()))
+            .unwrap_or_else(|| "dynamic-dock.exe".into());
+        unsafe {
+            if let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+                let mut entry = PROCESSENTRY32W {
+                    dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+                    ..Default::default()
+                };
+                let mut ok = Process32FirstW(snap, &mut entry).is_ok();
+                while ok {
+                    let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+                    let exe = String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase();
+                    if exe == name && entry.th32ProcessID != me {
+                        if let Ok(h) = OpenProcess(PROCESS_TERMINATE, false, entry.th32ProcessID) {
+                            let _ = TerminateProcess(h, 1);
+                            let _ = CloseHandle(h);
+                            log!("ended process {}", entry.th32ProcessID);
+                        }
+                    }
+                    ok = Process32NextW(snap, &mut entry).is_ok();
+                }
+                let _ = CloseHandle(snap);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        restore_now();
     }
 
     /* ---------------- the watchdog process ---------------- */
@@ -199,6 +276,9 @@ mod imp {
             if let Ok(handle) = OpenProcess(PROCESS_SYNCHRONIZE, false, pid) {
                 WaitForSingleObject(handle, INFINITE);
             }
+        }
+        if read_journal().is_some() {
+            log!("watchdog: the dock (pid {pid}) ended without restoring the taskbar");
         }
         restore_now();
     }
@@ -276,6 +356,7 @@ mod imp {
             None => {
                 let state = get_taskbar_state();
                 write_journal(state).map_err(|e| format!("The taskbar was left alone: its recovery file can't be written ({e})."))?;
+                log!("taking the taskbar's place (its state was {state})");
                 state
             }
         };
@@ -321,6 +402,8 @@ mod imp {
             let mut data = appbar_data(hwnd, edge, RECT::default());
             if unsafe { SHAppBarMessage(ABM_NEW, &mut data) } != 0 {
                 REGISTERED.store(true, Ordering::SeqCst);
+            } else {
+                log!("app bar registration failed");
             }
         }
         let mut rc = monitor;
@@ -408,6 +491,15 @@ mod imp {
         if fg.is_invalid() || own_window(fg) || SHELL_CLASSES.contains(&class_of(fg).as_str()) {
             return false;
         }
+        if unsafe { !IsWindowVisible(fg).as_bool() || IsIconic(fg).as_bool() } {
+            return false;
+        }
+        // A maximised window with a title bar spills past the screen by its
+        // borders when nothing reserves space; it isn't full screen.
+        let style = unsafe { GetWindowLongW(fg, GWL_STYLE) } as u32;
+        if unsafe { IsZoomed(fg) }.as_bool() && style & WS_CAPTION.0 == WS_CAPTION.0 {
+            return false;
+        }
         let monitor = unsafe { MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST) };
         match (rect_of(fg), monitor_rect(monitor)) {
             (Some(w), Some(m)) => {
@@ -484,6 +576,9 @@ mod imp {
         let mut error: Option<String> = None;
         let mut ticks: u32 = 0;
         let mut look = (system_light(), accent_colour());
+        let mut grace_until: u64 = 0;
+        let mut was_alive: Option<bool> = None;
+        let mut was_full = false;
 
         loop {
             std::thread::sleep(TICK);
@@ -505,6 +600,7 @@ mod imp {
             let tb = taskbar().map(|h| h.0 as isize);
             if tb.is_some() && tb != last_taskbar {
                 if last_taskbar.is_some() {
+                    log!("Explorer restarted");
                     REGISTERED.store(false, Ordering::SeqCst);
                     REPLACED.store(false, Ordering::Relaxed);
                     reserved = None;
@@ -512,10 +608,27 @@ mod imp {
                 last_taskbar = tb;
             }
 
-            // Replace the taskbar, or give it back.
-            let want = cfg.replace_taskbar && !PAUSED.load(Ordering::Relaxed);
+            // Replace the taskbar, or give it back. Only while the dock page
+            // is drawn and answering (while it is hidden for a full-screen
+            // app its timers may sleep, so that doesn't count).
+            let alive = match page_alive(grace_until) {
+                Some(false) if !shown => Some(true),
+                other => other,
+            };
+            if alive != was_alive {
+                if alive == Some(false) {
+                    log!("the dock page stopped answering; showing the Windows taskbar");
+                } else if was_alive == Some(false) {
+                    log!("the dock page answers again");
+                }
+                was_alive = alive;
+            }
+            let want = cfg.replace_taskbar && !PAUSED.load(Ordering::Relaxed) && alive == Some(true);
             if want && !REPLACED.load(Ordering::Relaxed) {
                 error = start_replacing().err();
+                if let Some(e) = &error {
+                    log!("can't replace the taskbar: {e}");
+                }
             } else if !want && REPLACED.load(Ordering::Relaxed) {
                 stop_replacing();
                 error = None;
@@ -562,6 +675,11 @@ mod imp {
                 h,
             };
             if placed != Some(next) {
+                log!(
+                    "dock window at {},{} size {}x{} (screen {:?}, scale {s}, replaced {replaced})",
+                    next.x, next.y, next.w, next.h,
+                    (screen.rect.left, screen.rect.top, screen.rect.right, screen.rect.bottom)
+                );
                 unsafe {
                     let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), next.x, next.y, next.w, next.h, SWP_NOACTIVATE | SWP_NOOWNERZORDER);
                 }
@@ -578,11 +696,23 @@ mod imp {
                 RECT { top: edge - strip_h, bottom: edge, ..screen.rect }
             };
             let overlapped = overlaps(fg, &strip);
+            if full != was_full {
+                log!(
+                    "full screen {}: {:?}",
+                    if full { "on" } else { "off" },
+                    if fg.is_invalid() { String::new() } else { class_of(fg) }
+                );
+                was_full = full;
+            }
             if full == shown {
                 unsafe {
                     let _ = ShowWindow(hwnd, if full { SW_HIDE } else { SW_SHOWNOACTIVATE });
                 }
                 shown = !full;
+                if shown {
+                    // Give the page time to wake up before judging it.
+                    grace_until = now_ms() + STALE_AFTER.as_millis() as u64;
+                }
             }
             if shown && fg != last_fg {
                 // Something new came to the front; stay above it.
