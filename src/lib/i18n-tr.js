@@ -362,4 +362,12 @@ export const TR = {
   "Add the Windows taskbar's pins": "Windows görev çubuğundaki sabitlenmişleri ekle",
   "Search apps": "Uygulama ara",
   "Nothing found": "Bir şey bulunamadı",
+  "Show the skip buttons": "İleri/geri sarma düğmelerini göster",
+  "Skip by": "Sarma süresi",
+  "5 seconds": "5 saniye",
+  "10 seconds": "10 saniye",
+  "15 seconds": "15 saniye",
+  "30 seconds": "30 saniye",
+  "Forward {n} seconds": "{n} saniye ileri",
+  "Back {n} seconds": "{n} saniye geri",
 };

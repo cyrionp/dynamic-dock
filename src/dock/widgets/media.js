@@ -20,6 +20,28 @@ function prettySource(src) {
   return s.length ? s[s.length - 1] : t("Media");
 }
 
+/** Jumps `seconds` back (negative) or forward in the current track. */
+function skip(m, seconds) {
+  const dur = m.timeline?.durationMs || 0;
+  let target = position(m) + seconds * 1000;
+  target = Math.max(0, dur ? Math.min(target, dur - 500) : target);
+  return call("media_seek", { positionMs: Math.round(target) }).catch(() => {});
+}
+
+/** A round arrow with the number of seconds in it. */
+const skipIcon = (seconds, forward) =>
+  `<svg class="ic ic-skip" viewBox="0 0 24 24" aria-hidden="true">${
+    forward ? '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.6 3.6v3.6H16"/>' : '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.4 3.6v3.6H8"/>'
+  }<text x="12" y="15.2" text-anchor="middle">${seconds}</text></svg>`;
+
+const skipButton = (seconds, forward, cls = "icon-btn") =>
+  `<button class="${cls}" data-skip="${forward ? seconds : -seconds}" aria-label="${escapeHtml(
+    forward ? t("Forward {n} seconds", { n: seconds }) : t("Back {n} seconds", { n: seconds })
+  )}">${skipIcon(seconds, forward)}</button>`;
+
+/** Players that report a length can jump around in the track. */
+const canSeek = (m) => (m.timeline?.durationMs || 0) > 0;
+
 const cover = (m, cls) =>
   m.thumbnail ? `<img class="${cls}" src="${m.thumbnail}" alt="" draggable="false" />` : `<span class="${cls} is-empty">${icon("music")}</span>`;
 
@@ -46,7 +68,8 @@ export const media = {
     const paint = () => {
       const show = m.hasSession && (m.title || m.artist || m.source);
       el.hidden = Boolean(o.hideIdle && !show);
-      const k = JSON.stringify([show, m.title, m.artist, m.playing, Boolean(m.thumbnail), m.thumbnail?.length]);
+      const skipping = Boolean(o.skip && canSeek(m));
+      const k = JSON.stringify([show, m.title, m.artist, m.playing, Boolean(m.thumbnail), m.thumbnail?.length, skipping]);
       if (k === key) return;
       key = k;
       if (!show) {
@@ -64,7 +87,9 @@ export const media = {
             o.controls
               ? `<span class="media-ctl">
               <button class="icon-btn" data-act="previous" aria-label="${t("Previous")}">${icon("previous")}</button>
+              ${skipping ? skipButton(Number(o.skipSeconds) || 15, false) : ""}
               <button class="icon-btn is-main" data-act="toggle" aria-label="${m.playing ? t("Pause") : t("Play")}">${icon(m.playing ? "pause" : "play")}</button>
+              ${skipping ? skipButton(Number(o.skipSeconds) || 15, true) : ""}
               <button class="icon-btn" data-act="next" aria-label="${t("Next")}">${icon("next")}</button>
             </span>`
               : ""
@@ -89,8 +114,10 @@ export const media = {
     el.addEventListener("click", (e) => {
       const act = e.target.closest("[data-act]");
       if (act) return control(act.dataset.act);
+      const jump = e.target.closest("[data-skip]");
+      if (jump) return skip(m, Number(jump.dataset.skip));
       const open = e.target.closest("[data-open], .media-idle");
-      if (open) openMediaPanel(open, ctx);
+      if (open) openMediaPanel(open, ctx, Number(o.skipSeconds) || 15);
     });
     wheelVolume(el);
     paint();
@@ -98,7 +125,7 @@ export const media = {
   },
 };
 
-function openMediaPanel(anchor, ctx) {
+function openMediaPanel(anchor, ctx, skipSeconds) {
   ctx.openPopup(anchor, {
     width: 340,
     className: "media-pop",
@@ -120,7 +147,9 @@ function openMediaPanel(anchor, ctx) {
           ${dur ? `<div class="mp-seek"><span class="mp-pos">0:00</span><input class="range" type="range" min="0" max="${dur}" step="1000" value="0" /><span>${formatDuration(dur)}</span></div>` : ""}
           <div class="mp-ctl">
             <button class="icon-btn" data-act="previous" aria-label="${t("Previous")}">${icon("previous")}</button>
+            ${dur ? skipButton(skipSeconds, false) : ""}
             <button class="icon-btn is-big" data-act="toggle">${icon(m.playing ? "pause" : "play")}</button>
+            ${dur ? skipButton(skipSeconds, true) : ""}
             <button class="icon-btn" data-act="next" aria-label="${t("Next")}">${icon("next")}</button>
           </div>`;
         tick();
@@ -146,6 +175,8 @@ function openMediaPanel(anchor, ctx) {
       body.addEventListener("click", (e) => {
         const act = e.target.closest("[data-act]");
         if (act) control(act.dataset.act);
+        const jump = e.target.closest("[data-skip]");
+        if (jump) skip(m, Number(jump.dataset.skip));
       });
       body.addEventListener("input", (e) => {
         if (!e.target.matches(".range")) return;

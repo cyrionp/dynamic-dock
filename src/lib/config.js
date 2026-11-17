@@ -103,6 +103,8 @@ export const CATALOG = {
       title: { type: "bool", label: "Show the title", default: true },
       width: { type: "number", label: "Title width", default: 180, min: 60, max: 400, step: 10, unit: "px" },
       controls: { type: "bool", label: "Show the buttons", default: true },
+      skip: { type: "bool", label: "Show the skip buttons", default: true },
+      skipSeconds: { type: "select", label: "Skip by", default: 15, choices: { 5: "5 seconds", 10: "10 seconds", 15: "15 seconds", 30: "30 seconds" } },
       hideIdle: { type: "bool", label: "Hide while nothing plays", default: false },
     },
   },
