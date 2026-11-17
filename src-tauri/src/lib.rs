@@ -146,26 +146,21 @@ fn mouse_down() -> bool {
 
 /* ---------------- the dock window's styles ---------------- */
 
-/// Never in Alt+Tab; takes the keyboard focus only while a pop-up needs
-/// typing (notes, timers).
+/// Takes the keyboard focus only while a pop-up needs typing (notes,
+/// timers). Through Tauri, so the window library's own style bookkeeping
+/// stays right (it re-applies its styles on every click-through change).
 #[cfg(windows)]
 fn set_dock_focusable(app: &AppHandle, focusable: bool) {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetForegroundWindow, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
     let Some(window) = app.get_webview_window(shell::DOCK) else { return };
-    let Ok(raw) = window.hwnd() else { return };
-    let hwnd = HWND(raw.0 as _);
-    unsafe {
-        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_TOOLWINDOW.0 as isize;
-        let ex = if focusable { ex & !(WS_EX_NOACTIVATE.0 as isize) } else { ex | WS_EX_NOACTIVATE.0 as isize };
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
-        if focusable {
-            let _ = SetForegroundWindow(hwnd);
-        }
-    }
+    let _ = window.set_focusable(focusable);
     if focusable {
+        if let Ok(raw) = window.hwnd() {
+            unsafe {
+                let _ = SetForegroundWindow(HWND(raw.0 as _));
+            }
+        }
         let _ = window.set_focus();
     }
 }

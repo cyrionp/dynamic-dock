@@ -97,7 +97,6 @@ const SECTIONS = [
 function general() {
   return `<h2>${t("General")}</h2>
     <div class="card">
-      ${row(t("Replace the Windows taskbar"), toggle("shell.replaceTaskbar"), t("Hides the Windows taskbar and puts the dock in its place. It always comes back when the dock closes."))}
       ${row(t("Start with Windows"), `<label class="toggle"><input type="checkbox" data-autostart ${autostart ? "checked" : ""} ${autostart == null ? "disabled" : ""} /><span></span></label>`)}
       ${row(t("Language"), select("lang", Object.fromEntries(LANGUAGES.map((l) => [l.id, l.label]))))}
     </div>
