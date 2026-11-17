@@ -863,6 +863,12 @@ body.is-demo {
   fill: currentColor;
 }
 
+.ic-skip text {
+  fill: currentColor;
+  stroke: none;
+  font: 700 7.5px var(--num);
+}
+
 .icon-btn.is-big {
   width: 48px;
   height: 48px;
