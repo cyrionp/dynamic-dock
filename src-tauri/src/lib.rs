@@ -291,6 +291,11 @@ async fn installed_apps() -> Vec<apps::InstalledApp> {
 }
 
 #[tauri::command]
+async fn taskbar_pins() -> Vec<apps::TaskbarPin> {
+    apps::taskbar_pins()
+}
+
+#[tauri::command]
 async fn launch(target: String, args: Option<String>, admin: Option<bool>) -> Result<(), String> {
     apps::launch(&target, args.as_deref().unwrap_or(""), admin.unwrap_or(false))
 }
@@ -544,6 +549,7 @@ pub fn run() {
             task_action,
             get_icons,
             installed_apps,
+            taskbar_pins,
             launch,
             launch_app,
             shortcut,

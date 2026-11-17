@@ -2,22 +2,46 @@
 // app, with magnification, launch bounce, drag to reorder, window lists
 // and context menus. Also the "Shortcuts" launcher.
 
-import { call } from "../../lib/tauri.js";
+import { call, inTauri } from "../../lib/tauri.js";
 import { icon } from "../../lib/icons.js";
 import { escapeHtml, baseName, prettyName } from "../../lib/util.js";
 import { t } from "../../lib/i18n.js";
 import { tasks, paintIcon } from "../data.js";
+import { demo } from "../demo.js";
 
 const lower = (s) => String(s || "").toLowerCase();
 
 /** A pinned app matches a window by its app id or its program. */
 const matches = (pin, w) => (pin.id && lower(pin.id) === lower(w.appId)) || (pin.path && lower(pin.path) === lower(w.exe));
 
-const iconKeyOf = (pin) => (pin.kind === "app" ? `shell:AppsFolder\\${pin.id}` : pin.path || pin.id);
+const iconKeyOf = (pin) => (pin.kind === "app" ? `shell:AppsFolder\\${pin.id}` : pin.path || pin.link || pin.id);
 
 function launchPin(pin, admin = false) {
   if (pin.kind === "app" && !admin) return call("launch_app", { id: pin.id });
-  return call("launch", { target: pin.path || pin.id, args: pin.args || "", admin });
+  // A pin taken from the Windows taskbar starts through its shortcut, which
+  // keeps its arguments (a browser profile, say).
+  if (pin.link && !admin) return call("launch", { target: pin.link, args: "", admin });
+  return call("launch", { target: pin.path || pin.link || pin.id, args: pin.args || "", admin });
+}
+
+/** A pin made from one of the Windows taskbar's own pins. */
+export function pinFromTaskbar(p) {
+  const exe = /\.exe$/i.test(p.target) ? p.target : "";
+  return { kind: "file", id: p.appId || exe || p.link, path: exe, link: p.link, name: p.name };
+}
+
+/** A pin made from an app in Start's list. */
+const pinFromInstalled = (a) => ({ kind: "app", id: a.id, path: a.path || "", name: a.name });
+
+const samePin = (a, b) => lower(a.id) === lower(b.id) || (a.path && lower(a.path) === lower(b.path));
+
+let installedCache = null;
+async function installedApps() {
+  if (!installedCache) {
+    installedCache = inTauri ? call("installed_apps") : Promise.resolve(demo.apps);
+    installedCache.catch(() => (installedCache = null));
+  }
+  return installedCache;
 }
 
 /** What pinning a running window stores. */
@@ -223,6 +247,7 @@ export const apps = {
       } else if (e.wins[0]) {
         items.push({ label: t("Pin to the dock"), icon: "pin", action: () => setPinned([...item.opts.pinned, pinFromWindow(e.wins[0])]) });
       }
+      items.push({ label: t("Pin an app…"), icon: "plus", action: () => pickApp(c) });
       if (e.wins.length === 1) {
         const w = e.wins[0];
         items.push("-");
@@ -243,6 +268,92 @@ export const apps = {
 
     function setPinned(pinned) {
       ctx.saveItemOpts({ pinned });
+    }
+
+    /** Right-click on the apps area itself, not on an icon. */
+    function areaMenu(ev) {
+      const anchor = {
+        getBoundingClientRect: () => {
+          const r = el.getBoundingClientRect();
+          return { left: ev.clientX, right: ev.clientX, top: r.top, bottom: r.bottom, width: 0, height: r.height };
+        },
+      };
+      ctx.openMenu(anchor, [
+        { header: t("Pinned apps") },
+        { label: t("Pin an app…"), icon: "plus", action: () => pickApp(el) },
+        { label: t("Add the Windows taskbar's pins"), icon: "pin", action: importTaskbar },
+        { label: t("Edit this bar…"), icon: "edit", action: () => ctx.openSettings("bars") },
+      ]);
+    }
+
+    async function importTaskbar() {
+      const found = inTauri ? await call("taskbar_pins").catch(() => []) : [];
+      const pins = item.opts.pinned.slice();
+      for (const p of found.map(pinFromTaskbar)) if (!pins.some((x) => samePin(x, p))) pins.push(p);
+      setPinned(pins);
+    }
+
+    /** A searchable list of everything in Start; a click pins (or unpins). */
+    function pickApp(anchor) {
+      ctx.openPopup(anchor, {
+        width: 340,
+        className: "pinpick",
+        focus: true,
+        kind: "pinpick",
+        build(body) {
+          body.innerHTML = `<div class="pop-title">${t("Pin an app")}</div>
+            <input class="input pinpick-search" placeholder="${escapeHtml(t("Search apps"))}" />
+            <div class="pinpick-list"><div class="pinpick-empty">${t("Loading…")}</div></div>`;
+          const input = body.querySelector("input");
+          const list = body.querySelector(".pinpick-list");
+          let all = [];
+          // Saving rebuilds the bar (and closes pop-ups), so the choices are
+          // kept here and saved once, when the list closes.
+          const before = item.opts.pinned;
+          let pinned = before.slice();
+          const paintList = () => {
+            const q = lower(input.value.trim());
+            const shown = all.filter((a) => !q || lower(a.name).includes(q)).slice(0, 80);
+            list.innerHTML = shown.length
+              ? shown
+                  .map((a) => {
+                    const on = pinned.some((p) => samePin(p, pinFromInstalled(a)));
+                    return `<button class="pinpick-row ${on ? "is-on" : ""}" data-id="${escapeHtml(a.id)}">
+                      <span class="pinpick-ic"><img alt="" hidden draggable="false" /></span>
+                      <span class="pinpick-name">${escapeHtml(a.name)}</span>
+                      <span class="pinpick-state">${on ? icon("check") : icon("pin")}</span>
+                    </button>`;
+                  })
+                  .join("")
+              : `<div class="pinpick-empty">${t("Nothing found")}</div>`;
+            for (const row of list.querySelectorAll("[data-id]")) {
+              paintIcon(row.querySelector("img"), `shell:AppsFolder\\${row.dataset.id}`, icon("window"));
+            }
+          };
+          installedApps()
+            .then((apps) => {
+              all = apps || [];
+              paintList();
+            })
+            .catch(() => (list.innerHTML = `<div class="pinpick-empty">${t("Nothing found")}</div>`));
+          input.addEventListener("input", paintList);
+          list.addEventListener("click", (ev) => {
+            const row = ev.target.closest("[data-id]");
+            const app = row && all.find((a) => a.id === row.dataset.id);
+            if (!app) return;
+            const pin = pinFromInstalled(app);
+            const has = pinned.some((p) => samePin(p, pin));
+            pinned = has ? pinned.filter((p) => !samePin(p, pin)) : [...pinned, pin];
+            row.classList.toggle("is-on", !has);
+            row.querySelector(".pinpick-state").innerHTML = has ? icon("pin") : icon("check");
+          });
+          setTimeout(() => input.focus(), 60);
+          return () => {
+            const changed = pinned.length !== before.length || pinned.some((p, i) => p !== before[i]);
+            if (changed) setTimeout(() => setPinned(pinned), 0);
+          };
+        },
+      });
     }
 
     /* ---------- dragging pinned apps to reorder ---------- */
@@ -311,10 +422,10 @@ export const apps = {
       if (e) launch(e, c);
     });
     el.addEventListener("contextmenu", (ev) => {
-      const c = ev.target.closest(".cell");
-      if (!c) return;
       ev.preventDefault();
-      menu(c);
+      const c = ev.target.closest(".cell");
+      if (c) menu(c);
+      else areaMenu(ev);
     });
     el.addEventListener("pointerover", (ev) => {
       const c = ev.target.closest(".cell");

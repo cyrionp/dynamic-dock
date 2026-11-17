@@ -16,6 +16,19 @@ pub struct InstalledApp {
     pub path: String,
 }
 
+/// One of the Windows taskbar's own pins (a shortcut in its pin folder).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskbarPin {
+    pub name: String,
+    /// The shortcut file; launching it keeps its arguments and start folder.
+    pub link: String,
+    /// What it points to (a program, usually).
+    pub target: String,
+    /// Its app id, when the shortcut carries one (for matching windows).
+    pub app_id: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrayApp {
@@ -39,6 +52,9 @@ pub use imp::*;
 mod fallback {
     use super::*;
     pub fn installed_apps() -> Vec<InstalledApp> {
+        Vec::new()
+    }
+    pub fn taskbar_pins() -> Vec<TaskbarPin> {
         Vec::new()
     }
     pub fn launch(_target: &str, _args: &str, _admin: bool) -> Result<(), String> {
@@ -69,12 +85,12 @@ pub use fallback::*;
 
 #[cfg(windows)]
 mod imp {
-    use super::{InstalledApp, RecycleBin, TrayApp};
+    use super::{InstalledApp, RecycleBin, TaskbarPin, TrayApp};
     use base64::Engine;
     use std::collections::HashSet;
     use windows::core::{w, Interface, GUID, HSTRING, PCWSTR, PWSTR};
     use windows::Win32::Foundation::{CloseHandle, ERROR_NO_MORE_ITEMS};
-    use windows::Win32::Storage::EnhancedStorage::PKEY_Link_TargetParsingPath;
+    use windows::Win32::Storage::EnhancedStorage::{PKEY_AppUserModel_ID, PKEY_Link_TargetParsingPath};
     use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED};
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
@@ -141,6 +157,50 @@ mod imp {
             out.push(InstalledApp { name, id, path });
         }
         out.sort_by_key(|a| a.name.to_lowercase());
+        Ok(out)
+    }
+
+    /// The Windows taskbar's pinned shortcuts, in its pin folder's order
+    /// (by name; Windows keeps the real order elsewhere, in a binary blob).
+    pub fn taskbar_pins() -> Vec<TaskbarPin> {
+        std::thread::spawn(|| unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            list_taskbar_pins().unwrap_or_default()
+        })
+        .join()
+        .unwrap_or_default()
+    }
+
+    unsafe fn list_taskbar_pins() -> windows::core::Result<Vec<TaskbarPin>> {
+        let Some(appdata) = std::env::var_os("APPDATA") else { return Ok(Vec::new()) };
+        let dir = std::path::Path::new(&appdata).join(r"Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar");
+        let mut out = Vec::new();
+        let Ok(entries) = std::fs::read_dir(&dir) else { return Ok(out) };
+        let mut files: Vec<_> = entries
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("lnk")))
+            .collect();
+        files.sort();
+        for file in files {
+            let link = file.to_string_lossy().to_string();
+            let Ok(item) = SHCreateItemFromParsingName::<_, _, IShellItem2>(&HSTRING::from(link.as_str()), None) else {
+                continue;
+            };
+            let get = |key| {
+                item.GetString(key).ok().map(|p| {
+                    let s = p.to_string().unwrap_or_default();
+                    CoTaskMemFree(Some(p.0 as *const _));
+                    s
+                })
+            };
+            let target = get(&PKEY_Link_TargetParsingPath)
+                .filter(|s| !s.is_empty())
+                .map(|t| resolve_known_folder(&t).unwrap_or(t))
+                .unwrap_or_default();
+            let app_id = get(&PKEY_AppUserModel_ID).unwrap_or_default();
+            let name = file.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            out.push(TaskbarPin { name, link, target, app_id });
+        }
         Ok(out)
     }
 

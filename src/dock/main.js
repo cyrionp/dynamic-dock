@@ -10,6 +10,7 @@ import { applyLook } from "../lib/themes.js";
 import { setLang, t } from "../lib/i18n.js";
 import { icon } from "../lib/icons.js";
 import { WIDGETS } from "./widgets/index.js";
+import { pinFromTaskbar } from "./widgets/apps.js";
 import { env as envSource } from "./data.js";
 import { checkOnLaunch, onUpdate, installUpdate, readVersion } from "../lib/updates.js";
 import {
@@ -479,8 +480,25 @@ function startHeartbeat() {
   setInterval(beat, 1000);
 }
 
+/** First start: the apps the Windows taskbar had pinned become the dock's. */
+async function importTaskbarPins() {
+  const found = await call("taskbar_pins").catch(() => null);
+  if (!found) return;
+  const apps = config.bars.flatMap((b) => ZONES.flatMap((z) => b.items[z])).find((x) => x.type === "apps");
+  if (apps && !apps.opts.pinned?.length) {
+    const seen = new Set();
+    apps.opts = {
+      ...apps.opts,
+      pinned: found.map(pinFromTaskbar).filter((p) => !seen.has(p.id.toLowerCase()) && seen.add(p.id.toLowerCase())),
+    };
+  }
+  config.pinsImported = true;
+  config = await saveConfig(config);
+}
+
 async function boot() {
   config = await loadConfig();
+  if (inTauri && isPrimaryDock && !config.pinsImported) await importTaskbarPins();
   applyConfig();
   rebuild();
   armReturn();

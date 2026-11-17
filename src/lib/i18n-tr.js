@@ -357,4 +357,9 @@ export const TR = {
   "{h}h {m}m": "{h} sa {m} dk",
   "{n} pinned": "{n} sabit",
   "{n} windows": "{n} pencere",
+  "Pin an app…": "Uygulama sabitle…",
+  "Pin an app": "Uygulama sabitle",
+  "Add the Windows taskbar's pins": "Windows görev çubuğundaki sabitlenmişleri ekle",
+  "Search apps": "Uygulama ara",
+  "Nothing found": "Bir şey bulunamadı",
 };
