@@ -16,8 +16,7 @@ mod system;
 mod tasks;
 mod volume;
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -43,8 +42,8 @@ pub fn restore_taskbar_now() {
 
 /// The dock page says it is drawn and running, once a second.
 #[tauri::command]
-fn dock_alive() {
-    shell::heartbeat();
+fn dock_alive(window: tauri::WebviewWindow) {
+    shell::heartbeat(window.label());
 }
 
 /// An error from one of the pages, for the log file.
@@ -72,9 +71,10 @@ impl HitRect {
     }
 }
 
-static HIT_RECTS: Mutex<Vec<HitRect>> = Mutex::new(Vec::new());
-/// A pop-up is open: tell the page about clicks outside the dock.
-static WATCH_OUTSIDE: AtomicBool = AtomicBool::new(false);
+/// Painted areas of each dock page, by window label.
+static HIT_RECTS: Mutex<Option<HashMap<String, Vec<HitRect>>>> = Mutex::new(None);
+/// Docks with a pop-up open: tell them about clicks outside.
+static WATCH_OUTSIDE: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// How often the pointer is checked while it is near the dock, and while
 /// it is far away.
@@ -86,48 +86,48 @@ fn spawn_click_through(app: &AppHandle) {
     std::thread::Builder::new()
         .name("hit-test".into())
         .spawn(move || {
-            let mut ignoring: Option<bool> = None;
+            let mut ignoring: HashMap<String, bool> = HashMap::new();
             let mut was_down = false;
             loop {
-                let Some(window) = app.get_webview_window(shell::DOCK) else {
+                let Ok(cursor) = app.cursor_position() else {
                     std::thread::sleep(HIT_FAR);
                     continue;
                 };
-                let (Ok(cursor), Ok(origin), Ok(size), Ok(scale)) = (
-                    app.cursor_position(),
-                    window.outer_position(),
-                    window.outer_size(),
-                    window.scale_factor(),
-                ) else {
-                    std::thread::sleep(HIT_FAR);
-                    continue;
-                };
-                let x = (cursor.x - origin.x as f64) / scale;
-                let y = (cursor.y - origin.y as f64) / scale;
-                let in_window = cursor.x >= origin.x as f64
-                    && cursor.y >= origin.y as f64
-                    && cursor.x < origin.x as f64 + size.width as f64
-                    && cursor.y < origin.y as f64 + size.height as f64;
-                let inside = in_window
-                    && HIT_RECTS
-                        .lock()
-                        .map(|rects| rects.iter().any(|r| r.contains(x, y)))
-                        .unwrap_or(false);
-                let ignore = !inside;
-                if ignoring != Some(ignore) && window.set_ignore_cursor_events(ignore).is_ok() {
-                    if ignore && ignoring == Some(false) {
-                        let _ = window.emit_to(shell::DOCK, "pointer://leave", ());
+                let down = mouse_down();
+                let mut near = false;
+                let docks: Vec<_> = app.webview_windows().into_iter().filter(|(l, _)| shell::is_dock(l)).collect();
+                ignoring.retain(|l, _| docks.iter().any(|(d, _)| d == l));
+                for (label, window) in docks {
+                    let (Ok(origin), Ok(size), Ok(scale)) = (window.outer_position(), window.outer_size(), window.scale_factor()) else {
+                        continue;
+                    };
+                    let x = (cursor.x - origin.x as f64) / scale;
+                    let y = (cursor.y - origin.y as f64) / scale;
+                    let in_window = cursor.x >= origin.x as f64
+                        && cursor.y >= origin.y as f64
+                        && cursor.x < origin.x as f64 + size.width as f64
+                        && cursor.y < origin.y as f64 + size.height as f64;
+                    near |= in_window;
+                    let inside = in_window
+                        && HIT_RECTS
+                            .lock()
+                            .map(|r| r.as_ref().and_then(|r| r.get(&label)).is_some_and(|rects| rects.iter().any(|r| r.contains(x, y))))
+                            .unwrap_or(false);
+                    let ignore = !inside;
+                    let before = ignoring.get(&label).copied();
+                    if before != Some(ignore) && window.set_ignore_cursor_events(ignore).is_ok() {
+                        if ignore && before == Some(false) {
+                            let _ = window.emit_to(label.as_str(), "pointer://leave", ());
+                        }
+                        ignoring.insert(label.clone(), ignore);
                     }
-                    ignoring = Some(ignore);
-                }
-                if WATCH_OUTSIDE.load(Ordering::Relaxed) {
-                    let down = mouse_down();
-                    if down && !was_down && !inside {
-                        let _ = window.emit_to(shell::DOCK, "pointer://outside", ());
+                    let watching = WATCH_OUTSIDE.lock().map(|w| w.as_ref().is_some_and(|w| w.contains(&label))).unwrap_or(false);
+                    if watching && down && !was_down && !inside {
+                        let _ = window.emit_to(label.as_str(), "pointer://outside", ());
                     }
-                    was_down = down;
                 }
-                std::thread::sleep(if in_window { HIT_NEAR } else { HIT_FAR });
+                was_down = down;
+                std::thread::sleep(if near { HIT_NEAR } else { HIT_FAR });
             }
         })
         .ok();
@@ -150,10 +150,9 @@ fn mouse_down() -> bool {
 /// timers). Through Tauri, so the window library's own style bookkeeping
 /// stays right (it re-applies its styles on every click-through change).
 #[cfg(windows)]
-fn set_dock_focusable(app: &AppHandle, focusable: bool) {
+fn set_dock_focusable(window: &tauri::WebviewWindow, focusable: bool) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
-    let Some(window) = app.get_webview_window(shell::DOCK) else { return };
     let _ = window.set_focusable(focusable);
     if focusable {
         if let Ok(raw) = window.hwnd() {
@@ -166,7 +165,7 @@ fn set_dock_focusable(app: &AppHandle, focusable: bool) {
 }
 
 #[cfg(not(windows))]
-fn set_dock_focusable(_app: &AppHandle, _focusable: bool) {}
+fn set_dock_focusable(_window: &tauri::WebviewWindow, _focusable: bool) {}
 
 /// Signing out or shutting down ends the process without an exit event;
 /// catch the session end on the dock window and put the taskbar back.
@@ -267,8 +266,8 @@ fn save_config(value: Value, app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn shell_env() -> shell::Env {
-    shell::env()
+fn shell_env(window: tauri::WebviewWindow) -> shell::Env {
+    shell::env(window.label())
 }
 
 #[tauri::command]
@@ -367,20 +366,27 @@ async fn volume_change(level: Option<f32>, delta: Option<f32>, mute: Option<bool
 }
 
 #[tauri::command]
-fn set_hit_rects(rects: Vec<HitRect>) {
+fn set_hit_rects(rects: Vec<HitRect>, window: tauri::WebviewWindow) {
     if let Ok(mut r) = HIT_RECTS.lock() {
-        *r = rects;
+        r.get_or_insert_with(HashMap::new).insert(window.label().to_string(), rects);
     }
 }
 
 #[tauri::command]
-fn set_watch_outside(on: bool) {
-    WATCH_OUTSIDE.store(on, Ordering::Relaxed);
+fn set_watch_outside(on: bool, window: tauri::WebviewWindow) {
+    if let Ok(mut w) = WATCH_OUTSIDE.lock() {
+        let w = w.get_or_insert_with(HashSet::new);
+        if on {
+            w.insert(window.label().to_string());
+        } else {
+            w.remove(window.label());
+        }
+    }
 }
 
 #[tauri::command]
-fn dock_focus(focus: bool, app: AppHandle) {
-    set_dock_focusable(&app, focus);
+fn dock_focus(focus: bool, window: tauri::WebviewWindow) {
+    set_dock_focusable(&window, focus);
 }
 
 #[tauri::command]
@@ -521,7 +527,11 @@ pub fn run() {
                         .ok()
                         .and_then(|h| h.iter().find(|(id, _)| *id == shortcut.id()).map(|(_, a)| *a));
                     if let Some(action) = action {
-                        let _ = app.emit_to(shell::DOCK, "hotkey://action", action);
+                        for (label, _) in app.webview_windows() {
+                            if shell::is_dock(&label) {
+                                let _ = app.emit_to(label.as_str(), "hotkey://action", action);
+                            }
+                        }
                     }
                 })
                 .build(),
@@ -564,7 +574,6 @@ pub fn run() {
             let handle = app.handle();
             config::load(handle);
             build_tray(handle)?;
-            set_dock_focusable(handle, false);
             watch_session_end(handle);
             spawn_click_through(handle);
             shell::init(handle);

@@ -4,7 +4,7 @@
 // window are painted, so clicks anywhere else go to the apps underneath.
 
 import "./dock.css";
-import { call, on, inTauri } from "../lib/tauri.js";
+import { call, on, inTauri, isPrimaryDock } from "../lib/tauri.js";
 import { loadConfig, saveConfig, onConfigChange, ZONES } from "../lib/config.js";
 import { applyLook } from "../lib/themes.js";
 import { setLang, t } from "../lib/i18n.js";
@@ -388,7 +388,8 @@ function reportHits() {
     // A thin strip along the edge brings it back.
     rects.push({ x: 0, y: top ? 0 : window.innerHeight - 3, width: window.innerWidth, height: 3 });
   } else {
-    const headroom = config.motion.magnify ? config.look.iconSize * (config.motion.magnifyScale - 1) + 10 : 0;
+    const iconSize = Math.min(config.look.iconSize, config.shell.barHeight - 16);
+    const headroom = config.motion.magnify ? iconSize * (config.motion.magnifyScale - 1) + 10 : 0;
     for (const pill of barsEl.querySelectorAll(".bar.is-current .pill")) {
       const r = pill.getBoundingClientRect();
       if (!r.width) continue;
@@ -484,7 +485,8 @@ async function boot() {
   rebuild();
   armReturn();
   readVersion().catch(() => {});
-  if (config.updates.auto) checkOnLaunch();
+  // One update check and offer, on the main screen's dock.
+  if (config.updates.auto && isPrimaryDock) checkOnLaunch();
   onUpdate(offerUpdate);
 
   onConfigChange((next) => {
