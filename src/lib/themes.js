@@ -48,7 +48,8 @@ export function applyLook(root, look, env = {}) {
   set("--hover", c.hover);
   set("--bg-opacity", String(look.opacity));
   set("--radius", `${look.radius}px`);
-  set("--icon", `${look.iconSize}px`);
+  // The chosen size; the dock caps it to what fits in the bar (dock.css).
+  set("--icon-set", `${look.iconSize}px`);
   set("--gap", `${look.gap}px`);
   set("--font", `"${look.font}", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif`);
   set("--font-size", `${look.fontSize}px`);

@@ -388,7 +388,8 @@ function reportHits() {
     // A thin strip along the edge brings it back.
     rects.push({ x: 0, y: top ? 0 : window.innerHeight - 3, width: window.innerWidth, height: 3 });
   } else {
-    const headroom = config.motion.magnify ? config.look.iconSize * (config.motion.magnifyScale - 1) + 10 : 0;
+    const iconSize = Math.min(config.look.iconSize, config.shell.barHeight - 16);
+    const headroom = config.motion.magnify ? iconSize * (config.motion.magnifyScale - 1) + 10 : 0;
     for (const pill of barsEl.querySelectorAll(".bar.is-current .pill")) {
       const r = pill.getBoundingClientRect();
       if (!r.width) continue;

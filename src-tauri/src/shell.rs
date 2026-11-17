@@ -644,7 +644,7 @@ mod imp {
 
     /* ---------------- the loop ---------------- */
 
-    #[derive(PartialEq, Clone, Copy)]
+    #[derive(PartialEq, Clone, Copy, Debug)]
     struct Placement {
         x: i32,
         y: i32,
@@ -656,6 +656,8 @@ mod imp {
     #[derive(Default)]
     struct Dock {
         placed: Option<Placement>,
+        /// Where the window was found when it was last moved back.
+        drifted: Option<Placement>,
         /// What the app bar was last asked for, and the edge Windows gave.
         reserved: Option<((RECT, bool, i32, bool), i32)>,
         shown: bool,
@@ -855,11 +857,18 @@ mod imp {
                     w: screen.rect.right - screen.rect.left,
                     h,
                 };
-                if d.placed != Some(next) {
-                    log!(
-                        "{}: window at {},{} size {}x{} (scale {s}, replaced {replaced})",
-                        screen.label, next.x, next.y, next.w, next.h
-                    );
+                // Check where the window really is, not only what we asked
+                // for: moving onto a screen with another scale makes the
+                // window library resize and move it on its own.
+                let actual = rect_of(hwnd).map(|r| Placement { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top });
+                if d.placed != Some(next) || actual != Some(next) {
+                    let new = d.placed != Some(next) || d.drifted != actual;
+                    d.drifted = actual;
+                    if new { log!(
+                        "{}: window at {},{} size {}x{} (scale {s}, replaced {replaced}, was {:?})",
+                        screen.label, next.x, next.y, next.w, next.h,
+                        actual.map(|a| (a.x, a.y, a.w, a.h))
+                    ); }
                     unsafe {
                         let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), next.x, next.y, next.w, next.h, SWP_NOACTIVATE | SWP_NOOWNERZORDER);
                     }

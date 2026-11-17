@@ -8,7 +8,9 @@
 :root {
   --bar-h: 52px;
   --margin: 6px;
-  --icon: 32px;
+  --icon-set: 32px;
+  /* Icons never outgrow the bar: a lower bar shrinks them too. */
+  --icon: min(var(--icon-set), calc(var(--bar-h) - 16px));
   --radius: 16px;
   --gap: 4px;
   --speed: 1;
