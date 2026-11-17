@@ -54,6 +54,12 @@ This ends every running Dynamic Dock process and shows the taskbar again.
 Right-clicking the dock's tray icon and ticking **Show the Windows taskbar for
 now** does the same without quitting.
 
+While the dock runs, the taskbar is set to auto-hide so it gives its space
+back; the dock puts your own setting back when it quits. If the taskbar keeps
+hiding itself after the dock has quit (older versions could save the
+wrong setting), turn off **Settings → Personalization → Taskbar → Taskbar
+behaviors → Automatically hide the taskbar** once while the dock is closed.
+
 ## Logs
 
 `%LOCALAPPDATA%\DynamicDock\dock.log` records what the dock did: taking or

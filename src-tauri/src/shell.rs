@@ -133,6 +133,11 @@ mod imp {
     /// the user with neither the dock nor the taskbar.
     const STALE_AFTER: Duration = Duration::from_secs(15);
     static START: OnceLock<Instant> = OnceLock::new();
+    /// The taskbar's own state, as this process first found it. Taking the
+    /// taskbar again later (after "show it for now", a page that stopped
+    /// answering, an Explorer restart) reuses it instead of reading the
+    /// state again, which could still be the auto-hide we set ourselves.
+    static ORIGINAL: Mutex<Option<u32>> = Mutex::new(None);
     /// Milliseconds since START of each page's last heartbeat, plus one.
     static BEATS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
 
@@ -241,8 +246,14 @@ mod imp {
     pub fn restore_now() {
         if let Some(state) = read_journal() {
             log!("restoring the taskbar (state {state})");
-            set_taskbar_state(state);
-            delete_journal();
+            if apply_taskbar_state(state, Duration::from_millis(1500)) {
+                delete_journal();
+            } else {
+                // Keep the journal: the next start (or the watchdog) uses it
+                // as the original state and tries again, rather than taking
+                // our auto-hide for the user's own setting.
+                log!("the taskbar still reports state {}; kept its recovery file", get_taskbar_state());
+            }
         }
         // Even without a journal: a hidden taskbar is never what we want
         // when restoring.
@@ -349,10 +360,9 @@ mod imp {
         (unsafe { SHAppBarMessage(ABM_GETSTATE, &mut data) } as u32) & (ABS_AUTOHIDE | ABS_ALWAYSONTOP)
     }
 
+    /// Asks Explorer for a taskbar state. Always sent: Explorer applies a
+    /// change with a delay, so the state it reports can be out of date.
     fn set_taskbar_state(state: u32) {
-        if get_taskbar_state() == state {
-            return;
-        }
         let mut data = APPBARDATA {
             cbSize: std::mem::size_of::<APPBARDATA>() as u32,
             hWnd: taskbar().unwrap_or_default(),
@@ -361,6 +371,26 @@ mod imp {
         };
         unsafe {
             SHAppBarMessage(ABM_SETSTATE, &mut data);
+        }
+    }
+
+    /// Sets the state and waits until Explorer reports it, asking again now
+    /// and then. False when it didn't take within `wait`.
+    fn apply_taskbar_state(state: u32, wait: Duration) -> bool {
+        let start = Instant::now();
+        let mut sent: Option<Instant> = None;
+        loop {
+            if sent.map_or(true, |t| t.elapsed() >= Duration::from_millis(500)) {
+                set_taskbar_state(state);
+                sent = Some(Instant::now());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+            if get_taskbar_state() == state {
+                return true;
+            }
+            if start.elapsed() >= wait {
+                return false;
+            }
         }
     }
 
@@ -388,15 +418,19 @@ mod imp {
         if taskbar().is_none() {
             return Err("The Windows taskbar can't be found (Explorer may be restarting).".into());
         }
+        let known = ORIGINAL.lock().ok().and_then(|o| *o);
         let original = match read_journal() {
             Some(state) => state,
             None => {
-                let state = get_taskbar_state();
+                let state = known.unwrap_or_else(get_taskbar_state);
                 write_journal(state).map_err(|e| format!("The taskbar was left alone: its recovery file can't be written ({e})."))?;
                 log!("taking the taskbar's place (its state was {state})");
                 state
             }
         };
+        if let Ok(mut o) = ORIGINAL.lock() {
+            o.get_or_insert(original);
+        }
         // Auto-hide makes Explorer give back the space it keeps for the
         // taskbar; hiding it keeps it from sliding in.
         set_taskbar_state(ABS_AUTOHIDE | (original & ABS_ALWAYSONTOP));
