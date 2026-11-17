@@ -2,9 +2,10 @@
 //!
 //! A worker thread listens to window events (created, destroyed, shown,
 //! hidden, renamed, minimised, brought to the front) through
-//! `SetWinEventHook`. It sleeps while nothing happens; after a burst of
-//! events it lists the windows again and sends `tasks://update` only when
-//! the list really changed.
+//! `SetWinEventHook`. After a burst of events it lists the windows again,
+//! and also every couple of seconds, because some apps (WhatsApp, for one)
+//! make their window a taskbar window by changing its style, which sends no
+//! event. It sends `tasks://update` only when the list really changed.
 //!
 //! Which windows count follows the taskbar's own rules: visible, not
 //! cloaked (other virtual desktops, suspended Store apps), not owned by
@@ -63,6 +64,7 @@ mod imp {
     use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, WPARAM};
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_ID;
+    use windows::Win32::Storage::Packaging::Appx::GetApplicationUserModelId;
     use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
     use windows::Win32::System::Threading::{
         AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
@@ -87,6 +89,8 @@ mod imp {
     const SETTLE: Duration = Duration::from_millis(50);
     /// During a steady stream of events, read at least this often.
     const MAX_WAIT: Duration = Duration::from_millis(250);
+    /// With no events at all, still read the list this often.
+    const RESCAN: Duration = Duration::from_secs(2);
 
     static DIRTY: AtomicBool = AtomicBool::new(false);
     static LIST: Mutex<Vec<TaskWindow>> = Mutex::new(Vec::new());
@@ -138,13 +142,18 @@ mod imp {
 
         let mut order: HashMap<isize, u64> = HashMap::new();
         let mut next_order: u64 = 0;
-        let mut exe_cache: HashMap<u32, String> = HashMap::new();
+        let mut exe_cache: HashMap<u32, (String, Option<String>)> = HashMap::new();
         // When the first unhandled event came in, and the latest one.
         let mut dirty_since: Option<Instant> = Some(Instant::now());
         let mut last_event = Instant::now();
+        let mut last_read = Instant::now();
 
         loop {
-            let timeout = if dirty_since.is_some() { SETTLE.as_millis() as u32 } else { u32::MAX };
+            let timeout = if dirty_since.is_some() {
+                SETTLE.as_millis() as u32
+            } else {
+                RESCAN.saturating_sub(last_read.elapsed()).as_millis() as u32
+            };
             unsafe {
                 MsgWaitForMultipleObjects(None, false, timeout, QS_ALLINPUT);
                 let mut msg = MSG::default();
@@ -157,12 +166,16 @@ mod imp {
                 last_event = Instant::now();
                 dirty_since.get_or_insert(last_event);
             }
-            let Some(since) = dirty_since else { continue };
-            // Let a burst of events settle, but don't wait forever.
-            if last_event.elapsed() < SETTLE && since.elapsed() < MAX_WAIT {
+            if let Some(since) = dirty_since {
+                // Let a burst of events settle, but don't wait forever.
+                if last_event.elapsed() < SETTLE && since.elapsed() < MAX_WAIT {
+                    continue;
+                }
+            } else if last_read.elapsed() < RESCAN {
                 continue;
             }
             dirty_since = None;
+            last_read = Instant::now();
 
             let list = read_windows(&mut order, &mut next_order, &mut exe_cache);
             let changed = LIST.lock().map(|mut l| {
@@ -212,6 +225,24 @@ mod imp {
             let _ = CloseHandle(handle);
             ok.ok()?;
             Some(String::from_utf16_lossy(&buf[..size as usize]))
+        }
+    }
+
+    /// A packaged app's id (WhatsApp, Store apps), from its process, for
+    /// windows that don't carry one themselves. None for ordinary programs.
+    fn aumid_of_pid(pid: u32) -> Option<String> {
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+            let mut buf = [0u16; 512];
+            let mut len = buf.len() as u32;
+            let err = GetApplicationUserModelId(handle, &mut len, Some(PWSTR(buf.as_mut_ptr())));
+            let _ = CloseHandle(handle);
+            if err.0 != 0 || len == 0 {
+                return None;
+            }
+            // `len` counts the closing zero.
+            let text = String::from_utf16_lossy(&buf[..(len as usize - 1).min(buf.len())]);
+            (!text.is_empty()).then_some(text)
         }
     }
 
@@ -278,7 +309,11 @@ mod imp {
         (found.1 != 0).then_some(found.1)
     }
 
-    fn read_windows(order: &mut HashMap<isize, u64>, next: &mut u64, exe_cache: &mut HashMap<u32, String>) -> Vec<TaskWindow> {
+    fn read_windows(
+        order: &mut HashMap<isize, u64>,
+        next: &mut u64,
+        exe_cache: &mut HashMap<u32, (String, Option<String>)>,
+    ) -> Vec<TaskWindow> {
         unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
             let list = &mut *(lparam.0 as *mut Vec<HWND>);
             list.push(hwnd);
@@ -305,12 +340,15 @@ mod imp {
                     pid = real;
                 }
             }
-            let exe = exe_cache
+            let (exe, process_aumid) = exe_cache
                 .entry(pid)
-                .or_insert_with(|| exe_of_pid(pid).unwrap_or_default())
+                .or_insert_with(|| (exe_of_pid(pid).unwrap_or_default(), aumid_of_pid(pid)))
                 .clone();
-            let aumid = app_user_model_id(hwnd);
-            let packaged = frame || exe.to_ascii_lowercase().contains("\\windowsapps\\");
+            // The window's own id first, then its package's, so a packaged
+            // app groups and matches its pin (taken from the Windows
+            // taskbar by that id) and shows its real icon.
+            let aumid = app_user_model_id(hwnd).or_else(|| process_aumid.clone());
+            let packaged = frame || process_aumid.is_some() || exe.to_ascii_lowercase().contains("\\windowsapps\\");
             let icon = match (&aumid, packaged) {
                 (Some(id), true) => format!("shell:AppsFolder\\{id}"),
                 _ => exe.clone(),

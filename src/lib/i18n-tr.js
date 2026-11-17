@@ -72,6 +72,7 @@ export const TR = {
   "Delete bar": "Çubuğu sil",
   Disk: "Disk",
   "Distance from the edge": "Kenardan uzaklık",
+  "The full width style always sits on the edge.": "Tam genişlik stili her zaman kenara yapışık durur.",
   Dock: "Dock",
   "Dock settings": "Dock ayarları",
   Done: "Bitti",
