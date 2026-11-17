@@ -227,6 +227,8 @@ export function defaults() {
   return {
     version: 1,
     lang: "auto",
+    // The Windows taskbar's pins are copied in once, on the first start.
+    pinsImported: false,
     shell: {
       monitors: "all",
       position: "bottom",

@@ -16,7 +16,9 @@ JavaScript and CSS, so the whole app stays small and light on RAM and CPU.
   choose what goes on every bar, and each bar has left, middle and right zones.
   One bar always keeps the open programs.
 - **Open programs and pins.** Running windows with their real icons, grouping
-  per app, a window list on click, pinning, drag to reorder, close/minimise
+  per app, a window list on click, pinning (the Windows taskbar's pins are
+  copied in on the first start; right-click to pin any app from Start or
+  unpin), drag to reorder, close/minimise
   from the context menu and an animated bounce on launch.
 - **30+ widgets:** apps, launcher, Start, search, Task View, Widgets,
   notifications, quick settings, clipboard, snipping tool, Explorer, Windows

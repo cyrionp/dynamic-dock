@@ -1677,6 +1677,88 @@ body.is-demo {
   text-overflow: ellipsis;
 }
 
+/* pin an app */
+.pinpick-search {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.pinpick-list {
+  display: grid;
+  gap: 1px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
+.pinpick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pinpick-row:hover {
+  background: var(--hover);
+}
+
+.pinpick-ic {
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  height: 22px;
+}
+
+.pinpick-ic img,
+.pinpick-ic svg {
+  width: 22px;
+  height: 22px;
+}
+
+.pinpick-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pinpick-state {
+  display: grid;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+
+.pinpick-state svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pinpick-row:hover .pinpick-state,
+.pinpick-row.is-on .pinpick-state {
+  opacity: 1;
+}
+
+.pinpick-row.is-on .pinpick-state {
+  color: var(--accent);
+}
+
+.pinpick-empty {
+  padding: 14px 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
 /* power */
 .pw {
   width: 100%;
