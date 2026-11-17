@@ -15,4 +15,9 @@ export async function on(event, handler) {
   return listen(event, (e) => handler(e.payload));
 }
 
-export { inTauri };
+// Which window this page is in: "dock" on the main screen, "dock-<display>"
+// on the others, "settings".
+const windowLabel = (inTauri && window.__TAURI_INTERNALS__?.metadata?.currentWindow?.label) || "dock";
+const isPrimaryDock = windowLabel === "dock";
+
+export { inTauri, windowLabel, isPrimaryDock };

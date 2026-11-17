@@ -102,6 +102,7 @@ function general() {
     </div>
     <h3>${t("Place")}</h3>
     <div class="card">
+      ${row(t("Screens"), select("shell.monitors", { all: "All screens", primary: "Main screen only" }), t("On every screen the dock takes that screen's taskbar's place."))}
       ${row(t("Screen edge"), select("shell.position", { bottom: "Bottom", top: "Top" }))}
       ${row(t("Distance from the edge"), range("shell.margin", 0, 24, 1, " px"))}
       ${row(t("Bar height"), range("shell.barHeight", 36, 80, 1, " px"))}

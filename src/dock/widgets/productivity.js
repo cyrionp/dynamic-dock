@@ -4,7 +4,8 @@
 import { icon } from "../../lib/icons.js";
 import { t } from "../../lib/i18n.js";
 import { escapeHtml, formatDuration, formatElapsed, debounce } from "../../lib/util.js";
-import { load, save, newId } from "../../lib/store.js";
+import { load, save, watch, newId } from "../../lib/store.js";
+import { isPrimaryDock } from "../../lib/tauri.js";
 
 /* ---------- a tiny shared store with change listeners ---------- */
 
@@ -29,6 +30,11 @@ function collection(key) {
       return () => subs.delete(fn);
     },
   };
+  // The docks on the other screens share the same data.
+  watch(key, (items) => {
+    c.items = Array.isArray(items) ? items : [];
+    for (const fn of subs) fn(c.items);
+  });
   return c;
 }
 
@@ -203,7 +209,8 @@ function watchTimers() {
   const next = timers.items.filter((x) => x.running).sort((a, c) => a.endsAt - c.endsAt)[0];
   if (!next) return;
   watchTimer = setTimeout(() => {
-    if (settleTimers() && soundOn) chime();
+    // Every dock marks the timer done; only the main screen's one rings.
+    if (settleTimers() && soundOn && isPrimaryDock) chime();
     watchTimers();
   }, Math.max(0, next.endsAt - Date.now()) + 20);
 }

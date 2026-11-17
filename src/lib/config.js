@@ -228,6 +228,7 @@ export function defaults() {
     version: 1,
     lang: "auto",
     shell: {
+      monitors: "all",
       position: "bottom",
       barHeight: 52,
       margin: 6,

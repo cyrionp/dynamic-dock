@@ -19,6 +19,8 @@ pub const CHANGED_EVENT: &str = "config://changed";
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Shell {
+    /// "all" screens or the "primary" one only.
+    pub monitors: String,
     /// "bottom" or "top".
     pub position: String,
     /// The bar's height in CSS pixels.
@@ -36,6 +38,7 @@ pub struct Shell {
 impl Default for Shell {
     fn default() -> Self {
         Self {
+            monitors: "all".into(),
             position: "bottom".into(),
             bar_height: 52.0,
             margin: 6.0,

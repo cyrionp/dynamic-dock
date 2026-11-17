@@ -20,5 +20,18 @@ export function save(key, value) {
   }
 }
 
+/** Calls `fn` with the new value when another window (the dock on another
+ * screen) saves `key`. */
+export function watch(key, fn) {
+  window.addEventListener("storage", (e) => {
+    if (e.key !== PREFIX + key) return;
+    try {
+      fn(e.newValue === null ? null : JSON.parse(e.newValue));
+    } catch {
+      // ignore a broken value
+    }
+  });
+}
+
 let counter = Date.now();
 export const newId = () => counter++;

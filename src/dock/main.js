@@ -4,7 +4,7 @@
 // window are painted, so clicks anywhere else go to the apps underneath.
 
 import "./dock.css";
-import { call, on, inTauri } from "../lib/tauri.js";
+import { call, on, inTauri, isPrimaryDock } from "../lib/tauri.js";
 import { loadConfig, saveConfig, onConfigChange, ZONES } from "../lib/config.js";
 import { applyLook } from "../lib/themes.js";
 import { setLang, t } from "../lib/i18n.js";
@@ -484,7 +484,8 @@ async function boot() {
   rebuild();
   armReturn();
   readVersion().catch(() => {});
-  if (config.updates.auto) checkOnLaunch();
+  // One update check and offer, on the main screen's dock.
+  if (config.updates.auto && isPrimaryDock) checkOnLaunch();
   onUpdate(offerUpdate);
 
   onConfigChange((next) => {
