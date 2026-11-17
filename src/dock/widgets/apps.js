@@ -1,0 +1,405 @@
+// The taskbar part of the dock: pinned apps and open windows, grouped by
+// app, with magnification, launch bounce, drag to reorder, window lists
+// and context menus. Also the "Shortcuts" launcher.
+
+import { call } from "../../lib/tauri.js";
+import { icon } from "../../lib/icons.js";
+import { escapeHtml, baseName, prettyName } from "../../lib/util.js";
+import { t } from "../../lib/i18n.js";
+import { tasks, paintIcon } from "../data.js";
+
+const lower = (s) => String(s || "").toLowerCase();
+
+/** A pinned app matches a window by its app id or its program. */
+const matches = (pin, w) => (pin.id && lower(pin.id) === lower(w.appId)) || (pin.path && lower(pin.path) === lower(w.exe));
+
+const iconKeyOf = (pin) => (pin.kind === "app" ? `shell:AppsFolder\\${pin.id}` : pin.path || pin.id);
+
+function launchPin(pin, admin = false) {
+  if (pin.kind === "app" && !admin) return call("launch_app", { id: pin.id });
+  return call("launch", { target: pin.path || pin.id, args: pin.args || "", admin });
+}
+
+/** What pinning a running window stores. */
+function pinFromWindow(w) {
+  const aumid = w.appId && !w.appId.includes("\\") ? w.appId : null;
+  const packaged = w.icon.startsWith("shell:AppsFolder\\");
+  return packaged && aumid
+    ? { kind: "app", id: aumid, path: w.exe, name: nameOf(w) }
+    : { kind: "file", id: w.exe, path: w.exe, name: nameOf(w) };
+}
+
+function nameOf(w) {
+  const base = prettyName(baseName(w.exe));
+  if (!base || /^applicationframehost$/i.test(base)) return w.title;
+  return base;
+}
+
+export const apps = {
+  render(el, item, ctx) {
+    el.classList.add("apps");
+    const cells = new Map(); // key → element
+    let windows = [];
+    let entries = [];
+    const launching = new Map(); // key → timer
+    let lastFocus = new Map(); // key → index for "cycle"
+
+    function build() {
+      const o = item.opts;
+      const used = new Set();
+      const out = [];
+      if (o.showPinned) {
+        for (const pin of o.pinned) {
+          const wins = windows.filter((w) => !used.has(w.hwnd) && matches(pin, w));
+          wins.forEach((w) => used.add(w.hwnd));
+          out.push({ key: `p:${lower(pin.id)}`, pin, wins });
+        }
+      }
+      if (o.showRunning) {
+        const groups = new Map();
+        for (const w of windows) {
+          if (used.has(w.hwnd)) continue;
+          const key = o.group ? `g:${lower(w.appId)}` : `w:${w.hwnd}`;
+          if (!groups.has(key)) groups.set(key, { key, pin: null, wins: [] });
+          groups.get(key).wins.push(w);
+        }
+        out.push(...groups.values());
+      }
+      return out;
+    }
+
+    function cellHtml(e) {
+      return `<span class="cell-icon"><img alt="" hidden draggable="false" /></span><span class="cell-label"></span><span class="cell-ind"></span>`;
+    }
+
+    function paint() {
+      entries = build();
+      const seen = new Set();
+      let prev = null;
+      for (const e of entries) {
+        seen.add(e.key);
+        let c = cells.get(e.key);
+        if (!c) {
+          c = document.createElement("button");
+          c.className = "cell is-new";
+          c.dataset.mag = "";
+          c.dataset.key = e.key;
+          c.innerHTML = cellHtml(e);
+          const iconKey = e.pin ? iconKeyOf(e.pin) : e.wins[0]?.icon;
+          paintIcon(c.querySelector("img"), iconKey, icon("window", "cell-fallback"));
+          cells.set(e.key, c);
+          requestAnimationFrame(() => requestAnimationFrame(() => c.classList.remove("is-new")));
+        }
+        const running = e.wins.length > 0;
+        const active = e.wins.some((w) => w.active);
+        c.classList.toggle("is-running", running);
+        c.classList.toggle("is-active", active);
+        c.classList.toggle("is-pinned", Boolean(e.pin));
+        c.classList.toggle("is-hidden-all", running && e.wins.every((w) => w.minimized));
+        c.dataset.count = String(Math.min(3, e.wins.length));
+        c.querySelector(".cell-ind").innerHTML = running ? "<i></i>".repeat(Math.min(3, e.wins.length)) : "";
+        const label = e.wins.length === 1 ? e.wins[0].title : e.pin?.name || (e.wins[0] ? nameOf(e.wins[0]) : "");
+        c._tip = e.wins.length > 1 ? `${e.pin?.name || nameOf(e.wins[0])} · ${t("{n} windows", { n: e.wins.length })}` : label || e.pin?.name;
+        const lab = c.querySelector(".cell-label");
+        lab.textContent = item.opts.labels ? label : "";
+        c.classList.toggle("has-label", Boolean(item.opts.labels && label));
+        if (running && launching.has(e.key)) {
+          clearTimeout(launching.get(e.key));
+          launching.delete(e.key);
+          c.classList.remove("is-launching");
+        }
+        // Keep DOM order equal to the entry order, moving only what moved.
+        const want = prev ? prev.nextSibling : el.firstChild;
+        if (want !== c) el.insertBefore(c, want);
+        prev = c;
+      }
+      for (const [key, c] of cells) {
+        if (seen.has(key)) continue;
+        cells.delete(key);
+        c.classList.add("is-leaving");
+        setTimeout(() => c.remove(), 220);
+      }
+      el.style.setProperty("--label-w", `${item.opts.labelWidth}px`);
+      ctx.layoutChanged();
+    }
+
+    const entryOf = (c) => entries.find((e) => e.key === c.dataset.key);
+
+    function bounce(c, key) {
+      if (!ctx.motion.bounce) return;
+      c.classList.remove("is-launching");
+      void c.offsetWidth;
+      c.classList.add("is-launching");
+      clearTimeout(launching.get(key));
+      launching.set(
+        key,
+        setTimeout(() => {
+          c.classList.remove("is-launching");
+          launching.delete(key);
+        }, 2600)
+      );
+    }
+
+    function launch(e, c, admin = false) {
+      bounce(c, e.key);
+      if (e.pin) return launchPin(e.pin, admin).catch(() => {});
+      const exe = e.wins[0]?.exe;
+      if (exe) call("launch", { target: exe, admin }).catch(() => {});
+    }
+
+    const act = (w, action = "activate") => call("task_action", { hwnd: w.hwnd, action }).catch(() => {});
+
+    function windowList(c, e) {
+      ctx.openPopup(c, {
+        width: 320,
+        className: "winlist",
+        build(body, close) {
+          const paintList = () => {
+            body.innerHTML = `<div class="pop-title">${escapeHtml(e.pin?.name || nameOf(e.wins[0]))}</div>
+              <div class="winlist-rows">${e.wins
+                .map(
+                  (w) => `<div class="winrow ${w.active ? "is-active" : ""} ${w.minimized ? "is-min" : ""}" data-h="${w.hwnd}">
+                    <span class="winrow-title">${escapeHtml(w.title)}</span>
+                    <button class="icon-btn" data-close="${w.hwnd}" title="${t("Close")}">${icon("close")}</button>
+                  </div>`
+                )
+                .join("")}</div>`;
+          };
+          paintList();
+          body.addEventListener("click", (ev) => {
+            const x = ev.target.closest("[data-close]");
+            if (x) {
+              const w = e.wins.find((w) => String(w.hwnd) === x.dataset.close);
+              if (w) act(w, "close");
+              x.closest(".winrow")?.classList.add("is-closing");
+              return;
+            }
+            const row = ev.target.closest("[data-h]");
+            if (row) {
+              const w = e.wins.find((w) => String(w.hwnd) === row.dataset.h);
+              close();
+              if (w) act(w, "focus");
+            }
+          });
+        },
+      });
+    }
+
+    function onClick(c, ev) {
+      const e = entryOf(c);
+      if (!e) return;
+      ctx.hideTip();
+      if (!e.wins.length) return launch(e, c);
+      if (ev.shiftKey) return launch(e, c);
+      if (e.wins.length === 1) return act(e.wins[0]);
+      switch (item.opts.multiClick) {
+        case "cycle": {
+          const active = e.wins.findIndex((w) => w.active);
+          const next = e.wins[(active + 1) % e.wins.length];
+          return act(next, "focus");
+        }
+        case "last": {
+          const w = e.wins.find((w) => w.active) ?? e.wins[e.wins.length - 1];
+          return act(w);
+        }
+        default:
+          return windowList(c, e);
+      }
+    }
+
+    function menu(c) {
+      const e = entryOf(c);
+      if (!e) return;
+      const name = e.pin?.name || nameOf(e.wins[0]);
+      const items = [{ header: name }];
+      for (const w of e.wins.slice(0, 8)) {
+        items.push({ label: w.title, icon: w.active ? "check" : "window", action: () => act(w, "focus") });
+      }
+      if (e.wins.length) items.push("-");
+      items.push({ label: t("New window"), icon: "plus", action: () => launch(e, c) });
+      items.push({ label: t("Run as administrator"), icon: "shield", action: () => launch(e, c, true) });
+      if (e.pin) {
+        items.push({ label: t("Unpin from the dock"), icon: "unpin", action: () => setPinned(item.opts.pinned.filter((p) => p !== e.pin)) });
+      } else if (e.wins[0]) {
+        items.push({ label: t("Pin to the dock"), icon: "pin", action: () => setPinned([...item.opts.pinned, pinFromWindow(e.wins[0])]) });
+      }
+      if (e.wins.length === 1) {
+        const w = e.wins[0];
+        items.push("-");
+        items.push({ label: w.minimized ? t("Restore") : t("Minimise"), icon: "minimize", action: () => act(w, w.minimized ? "restore" : "minimize") });
+        items.push({ label: t("Maximise"), icon: "maximize", action: () => act(w, "maximize") });
+      }
+      if (e.wins.length) {
+        items.push("-");
+        items.push({
+          label: e.wins.length > 1 ? t("Close all windows") : t("Close window"),
+          icon: "close",
+          danger: true,
+          action: () => e.wins.forEach((w) => act(w, "close")),
+        });
+      }
+      ctx.openMenu(c, items);
+    }
+
+    function setPinned(pinned) {
+      ctx.saveItemOpts({ pinned });
+    }
+
+    /* ---------- dragging pinned apps to reorder ---------- */
+
+    let drag = null;
+    el.addEventListener("pointerdown", (ev) => {
+      const c = ev.target.closest(".cell");
+      if (!c || ev.button !== 0) return;
+      drag = { c, x: ev.clientX, moved: false, id: ev.pointerId };
+    });
+    el.addEventListener("pointermove", (ev) => {
+      if (!drag || drag.id !== ev.pointerId) return;
+      const dx = ev.clientX - drag.x;
+      if (!drag.moved && Math.abs(dx) < 6) return;
+      if (!drag.moved) {
+        const e = entryOf(drag.c);
+        if (!e?.pin && !e?.wins.length) return (drag = null);
+        drag.moved = true;
+        drag.c.setPointerCapture(ev.pointerId);
+        drag.c.classList.add("is-dragging");
+        ctx.setMagnifyPaused(true);
+        ctx.hideTip();
+      }
+      drag.c.style.transform = `translateX(${dx}px)`;
+    });
+    const endDrag = (ev) => {
+      if (!drag) return;
+      const { c, moved } = drag;
+      drag = null;
+      if (!moved) return;
+      c.classList.remove("is-dragging");
+      c.style.transform = "";
+      ctx.setMagnifyPaused(false);
+      // Where it was dropped, among all cells.
+      const others = [...el.querySelectorAll(".cell:not(.is-leaving)")].filter((x) => x !== c);
+      let index = others.findIndex((x) => {
+        const r = x.getBoundingClientRect();
+        return ev.clientX < r.left + r.width / 2;
+      });
+      if (index < 0) index = others.length;
+      const e = entryOf(c);
+      const pins = item.opts.pinned.slice();
+      const pin = e.pin ?? pinFromWindow(e.wins[0]);
+      const from = pins.indexOf(e.pin);
+      if (from >= 0) pins.splice(from, 1);
+      // Dropped among the pinned ones: becomes pinned there.
+      const pinnedBefore = others.slice(0, index).filter((x) => x.classList.contains("is-pinned")).length;
+      if (index <= others.filter((x) => x.classList.contains("is-pinned")).length || e.pin) {
+        pins.splice(Math.min(pinnedBefore, pins.length), 0, pin);
+        setPinned(pins);
+      }
+      c._dragged = true;
+      setTimeout(() => (c._dragged = false), 50);
+    };
+    el.addEventListener("pointerup", endDrag);
+    el.addEventListener("pointercancel", endDrag);
+
+    el.addEventListener("click", (ev) => {
+      const c = ev.target.closest(".cell");
+      if (c && !c._dragged) onClick(c, ev);
+    });
+    el.addEventListener("auxclick", (ev) => {
+      const c = ev.target.closest(".cell");
+      if (!c || ev.button !== 1) return;
+      const e = entryOf(c);
+      if (e) launch(e, c);
+    });
+    el.addEventListener("contextmenu", (ev) => {
+      const c = ev.target.closest(".cell");
+      if (!c) return;
+      ev.preventDefault();
+      menu(c);
+    });
+    el.addEventListener("pointerover", (ev) => {
+      const c = ev.target.closest(".cell");
+      if (c && !drag?.moved) ctx.showTip(c, c._tip);
+    });
+    el.addEventListener("pointerout", (ev) => {
+      if (ev.target.closest(".cell")) ctx.hideTip();
+    });
+
+    const off = tasks.subscribe((list) => {
+      windows = list;
+      paint();
+    });
+    paint();
+    return {
+      destroy() {
+        off();
+        for (const timer of launching.values()) clearTimeout(timer);
+      },
+    };
+  },
+};
+
+/* ---------- Shortcuts: the user's own files, folders, links ---------- */
+
+const isUrl = (s) => /^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^(mailto|ms-settings):/i.test(s);
+
+export const launcher = {
+  render(el, item, ctx) {
+    el.classList.add("apps", "launcher");
+    const entries = item.opts.entries;
+    if (!entries.length) {
+      el.innerHTML = `<button class="cell is-empty" data-mag>${icon("plus")}</button>`;
+      el.firstChild.addEventListener("click", () => ctx.openSettings("bars"));
+      el.firstChild._tip = t("Add shortcuts in Settings");
+      el.addEventListener("pointerover", () => ctx.showTip(el.firstChild, el.firstChild._tip));
+      el.addEventListener("pointerout", () => ctx.hideTip());
+      return {};
+    }
+    el.innerHTML = entries
+      .map(
+        (e, i) => `<button class="cell" data-mag data-i="${i}"><span class="cell-icon">${
+          isUrl(e.target) ? icon("globe", "cell-fallback") : `<img alt="" hidden draggable="false" />`
+        }</span><span class="cell-ind"></span></button>`
+      )
+      .join("");
+    el.querySelectorAll(".cell").forEach((c) => {
+      const e = entries[Number(c.dataset.i)];
+      const img = c.querySelector("img");
+      if (img) paintIcon(img, e.target, icon(/\.\w{1,5}$/.test(e.target) ? "file" : "folder", "cell-fallback"));
+      c._tip = e.name || baseName(e.target);
+    });
+    const open = (c, admin = false) => {
+      const e = entries[Number(c.dataset.i)];
+      if (ctx.motion.bounce) {
+        c.classList.remove("is-launching");
+        void c.offsetWidth;
+        c.classList.add("is-launching");
+        setTimeout(() => c.classList.remove("is-launching"), 1400);
+      }
+      call("launch", { target: e.target, args: e.args || "", admin }).catch(() => {});
+    };
+    el.addEventListener("click", (ev) => {
+      const c = ev.target.closest(".cell");
+      if (c) open(c);
+    });
+    el.addEventListener("contextmenu", (ev) => {
+      const c = ev.target.closest(".cell");
+      if (!c) return;
+      ev.preventDefault();
+      const e = entries[Number(c.dataset.i)];
+      ctx.openMenu(c, [
+        { header: e.name || baseName(e.target) },
+        { label: t("Open"), icon: "rocket", action: () => open(c) },
+        { label: t("Run as administrator"), icon: "shield", action: () => open(c, true) },
+        "-",
+        { label: t("Remove"), icon: "close", danger: true, action: () => ctx.saveItemOpts({ entries: entries.filter((x) => x !== e) }) },
+        { label: t("Edit shortcuts…"), icon: "edit", action: () => ctx.openSettings("bars") },
+      ]);
+    });
+    el.addEventListener("pointerover", (ev) => {
+      const c = ev.target.closest(".cell");
+      if (c) ctx.showTip(c, c._tip);
+    });
+    el.addEventListener("pointerout", () => ctx.hideTip());
+    return {};
+  },
+};
