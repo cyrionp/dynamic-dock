@@ -8,8 +8,8 @@ JavaScript and CSS, so the whole app stays small and light on RAM and CPU.
 
 - **Replaces the taskbar.** The Windows taskbar is hidden and the dock
   reserves its space at the screen edge (bottom or top), like the taskbar did,
-  so maximised windows stop above it. Turn this off in Settings to keep the
-  taskbar and float the dock over it.
+  so maximised windows stop above it. The tray icon's **Show the Windows
+  taskbar for now** brings the taskbar back until the dock restarts.
 - **Three bars.** The dock holds up to three bars and switches between them
   with an animation: scroll on the dock, click the dots, use the bar switcher
   widget or the hotkeys (default `Ctrl+Alt+←/→` and `Ctrl+Alt+1/2/3`). You

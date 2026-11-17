@@ -77,6 +77,7 @@ mod imp {
     use tauri::{AppHandle, Emitter, Manager};
     use windows::core::{w, BOOL, PCWSTR};
     use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, POINT, RECT};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO,
         MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY,
@@ -569,7 +570,7 @@ mod imp {
 
     fn run(app: AppHandle) {
         let mut placed: Option<Placement> = None;
-        let mut reserved: Option<((RECT, bool, i32), i32)> = None;
+        let mut reserved: Option<((RECT, bool, i32, bool), i32)> = None;
         let mut shown = false;
         let mut last_taskbar: Option<isize> = None;
         let mut last_fg = HWND::default();
@@ -579,6 +580,7 @@ mod imp {
         let mut grace_until: u64 = 0;
         let mut was_alive: Option<bool> = None;
         let mut was_full = false;
+        let mut last_state = String::new();
 
         loop {
             std::thread::sleep(TICK);
@@ -623,7 +625,9 @@ mod imp {
                 }
                 was_alive = alive;
             }
-            let want = cfg.replace_taskbar && !PAUSED.load(Ordering::Relaxed) && alive == Some(true);
+            // The dock always takes the taskbar's place; only the tray's "show it
+            // for now" and a dock page that isn't running give it back.
+            let want = !PAUSED.load(Ordering::Relaxed) && alive == Some(true);
             if want && !REPLACED.load(Ordering::Relaxed) {
                 error = start_replacing().err();
                 if let Some(e) = &error {
@@ -643,13 +647,19 @@ mod imp {
             let reserve = (cfg.reserve() * s).round() as i32;
             let top = cfg.top();
             let edge = if reserve > 0 {
-                let key = (screen.rect, top, reserve);
+                // Hiding the taskbar frees its strip, so ask again when that
+                // changes, and every few seconds, since Explorer applies a
+                // new taskbar state with a delay.
+                let key = (screen.rect, top, reserve, replaced);
                 match reserved {
                     // Unchanged: no need to ask Windows again.
-                    Some((k, edge)) if k == key && REGISTERED.load(Ordering::SeqCst) => edge,
+                    Some((k, edge)) if k == key && REGISTERED.load(Ordering::SeqCst) && ticks % 15 != 0 => edge,
                     _ => {
                         let rc = appbar_set(hwnd, screen.rect, top, reserve);
                         let edge = if top { rc.top } else { rc.bottom };
+                        if reserved.map(|r| r.1) != Some(edge) {
+                            log!("app bar edge at {edge} (asked for {reserve}px, replaced {replaced})");
+                        }
                         reserved = Some((key, edge));
                         edge
                     }
@@ -705,9 +715,10 @@ mod imp {
                 was_full = full;
             }
             if full == shown {
-                unsafe {
-                    let _ = ShowWindow(hwnd, if full { SW_HIDE } else { SW_SHOWNOACTIVATE });
-                }
+                // Through Tauri, never a raw ShowWindow: the window library
+                // keeps its own "visible" flag and re-applies it (hiding the
+                // window) on every style change, such as click-through.
+                let _ = if full { window.hide() } else { window.show() };
                 shown = !full;
                 if shown {
                     // Give the page time to wake up before judging it.
@@ -721,6 +732,29 @@ mod imp {
                 }
             }
             last_fg = fg;
+
+            // What the dock window really looks like to Windows, logged when
+            // it changes, so a dock that "vanished" can be explained.
+            let state = unsafe {
+                let r = rect_of(hwnd).unwrap_or_default();
+                let cloaked = {
+                    let mut c = 0u32;
+                    let _ = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &mut c as *mut u32 as *mut _, 4);
+                    c
+                };
+                format!(
+                    "visible {} minimised {} cloaked {} rect {},{},{},{} taskbar visible {}",
+                    IsWindowVisible(hwnd).as_bool(),
+                    IsIconic(hwnd).as_bool(),
+                    cloaked,
+                    r.left, r.top, r.right, r.bottom,
+                    taskbar().is_some_and(|t| IsWindowVisible(t).as_bool()),
+                )
+            };
+            if state != last_state {
+                log!("dock window: {state}");
+                last_state = state;
+            }
 
             // The system look rarely changes: read it every few seconds.
             if ticks % 15 == 0 {
