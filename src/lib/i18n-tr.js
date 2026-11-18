@@ -264,6 +264,7 @@ export const TR = {
   "Show the title": "Başlığı göster",
   "Show upload too": "Yüklemeyi de göster",
   "Show window titles": "Pencere başlıklarını göster",
+  "Show notification counts": "Bildirim sayılarını göster",
   "Shut down": "Kapat",
   "Sign out": "Oturumu kapat",
   Sleep: "Uyku",

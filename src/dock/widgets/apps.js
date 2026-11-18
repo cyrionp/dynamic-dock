@@ -6,7 +6,7 @@ import { call, inTauri } from "../../lib/tauri.js";
 import { icon } from "../../lib/icons.js";
 import { escapeHtml, baseName, prettyName } from "../../lib/util.js";
 import { t } from "../../lib/i18n.js";
-import { tasks, paintIcon } from "../data.js";
+import { tasks, badges, paintIcon } from "../data.js";
 import { demo } from "../demo.js";
 import { load, save } from "../../lib/store.js";
 
@@ -155,7 +155,7 @@ export const apps = {
     }
 
     function cellHtml(e) {
-      return `<span class="cell-icon"><img alt="" hidden draggable="false" /></span><span class="cell-label"></span><span class="cell-ind"></span>`;
+      return `<span class="cell-icon"><img alt="" hidden draggable="false" /><b class="cell-badge" hidden></b></span><span class="cell-label"></span><span class="cell-ind"></span>`;
     }
 
     function paint() {
@@ -184,6 +184,12 @@ export const apps = {
         c.classList.toggle("is-hidden-all", running && e.wins.every((w) => w.minimized));
         c.dataset.count = String(Math.min(3, e.wins.length));
         c.querySelector(".cell-ind").innerHTML = running ? "<i></i>".repeat(Math.min(3, e.wins.length)) : "";
+        // The app's notification count, as on the taskbar.
+        const badge = item.opts.badges ? badgeOf(e) : "";
+        const b = c.querySelector(".cell-badge");
+        if (b.textContent !== badge) b.textContent = badge;
+        b.hidden = !badge;
+        b.classList.toggle("is-dot", badge === "•");
         const label = e.wins.length === 1 ? e.wins[0].title : e.pin?.name || (e.wins[0] ? nameOf(e.wins[0]) : "");
         c._tip = e.wins.length > 1 ? `${e.pin?.name || nameOf(e.wins[0])} · ${t("{n} windows", { n: e.wins.length })}` : label || e.pin?.name;
         const lab = c.querySelector(".cell-label");
@@ -260,6 +266,16 @@ export const apps = {
     resized.observe(el);
 
     const entryOf = (c) => entries.find((e) => e.key === c.dataset.key);
+
+    let badgeMap = {};
+    function badgeOf(e) {
+      const ids = [e.pin?.id, ...e.wins.map((w) => w.appId)];
+      for (const id of ids) {
+        const v = id && badgeMap[lower(id)];
+        if (v) return v;
+      }
+      return "";
+    }
 
     function bounce(c, key) {
       if (!ctx.motion.bounce) return;
@@ -550,10 +566,15 @@ export const apps = {
       windows = list;
       paint();
     });
+    const offBadges = badges.subscribe((map) => {
+      badgeMap = map || {};
+      paint();
+    });
     paint();
     return {
       destroy() {
         off();
+        offBadges();
         resized.disconnect();
         for (const timer of launching.values()) clearTimeout(timer);
       },

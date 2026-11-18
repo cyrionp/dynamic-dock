@@ -47,6 +47,16 @@ export const tasks = source({
   },
 });
 
+/** Notification counts on app icons: app id (lower case) → "3", "99+" or "•". */
+export const badges = source({
+  initial: {},
+  start(s) {
+    if (!inTauri) return s.set(demo.badges);
+    listen("badges://update", s);
+    call("badges_list").then((v) => v && s.set(v)).catch(() => {});
+  },
+});
+
 export const media = source({
   initial: { hasSession: false },
   start(s) {

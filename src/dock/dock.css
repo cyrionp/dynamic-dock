@@ -525,6 +525,38 @@ body.is-demo {
   transform-origin: 50% 0%;
 }
 
+/* Notification count, top right of the icon, like the taskbar's. */
+.cell-badge {
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font: 700 10px/1 var(--num, inherit);
+  color: #fff;
+  background: #e5484d;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #000 35%, transparent);
+  pointer-events: none;
+}
+
+.cell-badge[hidden] {
+  display: none;
+}
+
+.cell-badge.is-dot {
+  top: -1px;
+  right: -1px;
+  min-width: 10px;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  font-size: 0;
+}
+
 .is-magnifying .cell-icon {
   transition: transform 70ms linear, translate var(--t-fast) var(--ease);
 }
@@ -974,6 +1006,16 @@ body.is-demo {
   fill: currentColor;
 }
 
+/* Icons wrapped in a span: as flex boxes, so the icon is centred instead
+   of sitting on the text baseline (which put it a little high). */
+.vol-ic,
+.chip-ic,
+.w-ic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .volume .vol-pct:empty {
   display: none;
 }
@@ -1099,51 +1141,51 @@ body.is-demo {
   display: none;
 }
 
-.batt-body {
-  position: relative;
-  width: 24px;
-  height: 12px;
-  border: 1.5px solid currentColor;
-  border-radius: 3.5px;
-  padding: 1.5px;
-  display: flex;
-}
-
-.batt-body::after {
-  content: "";
-  position: absolute;
-  right: -4px;
-  top: 3px;
-  width: 2px;
-  height: 4px;
-  border-radius: 0 1px 1px 0;
-  background: currentColor;
-}
-
-.batt-body i {
+/* Battery: an outline with a cap, filled to the charge. Green while
+   charging (with a bolt cut into it), red when low. */
+.batt-svg {
   display: block;
-  height: 100%;
-  border-radius: 1.5px;
-  background: currentColor;
+  width: 26px;
+  height: 13px;
+  overflow: visible;
+}
+
+.batt-svg .b-shell {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  opacity: 0.75;
+}
+
+.batt-svg .b-cap {
+  fill: currentColor;
+  opacity: 0.75;
+}
+
+.batt-svg .b-fill {
+  fill: currentColor;
+  transition: width var(--t-slow) var(--ease);
+}
+
+.batt-svg .b-bolt {
+  fill: currentColor;
+}
+
+.batt.is-mid .b-fill {
+  fill: #f5b041;
 }
 
 .batt.is-low {
   color: #ff5f57;
 }
 
-.batt.is-charging .batt-body i {
-  background: #2ecc71;
+.batt.is-charging .b-fill {
+  fill: #3fb950;
 }
 
-.batt-body .ic {
-  position: absolute;
-  inset: -1px 0 0 0;
-  margin: auto;
-  width: 10px;
-  height: 10px;
-  fill: var(--fg);
-  stroke: var(--pop);
-  stroke-width: 1;
+.batt-pct {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
 }
 
 .recycle .dot {

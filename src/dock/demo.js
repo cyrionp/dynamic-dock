@@ -34,6 +34,7 @@ export const demo = {
     w(5, "Discord", "#general | Discord"),
     w(6, "Explorer", "Downloads", { minimized: true }),
   ],
+  badges: { "c:\\program files\\discord.exe": "3", "c:\\program files\\spotify.exe": "•" },
   media: {
     hasSession: true,
     playing: true,

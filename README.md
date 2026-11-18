@@ -19,7 +19,9 @@ JavaScript and CSS, so the whole app stays small and light on RAM and CPU.
   per app, a window list on click, pinning (the Windows taskbar's pins are
   copied in on the first start; right-click to pin any app from Start or
   unpin), drag to reorder, close/minimise
-  from the context menu and an animated bounce on launch.
+  from the context menu, an animated bounce on launch and notification
+  counts (WhatsApp, Teams and other Store apps that badge their taskbar
+  icon).
 - **30+ widgets:** apps, launcher, Start, search, Task View, Widgets,
   notifications, quick settings, clipboard, snipping tool, Explorer, Windows
   settings, Run, show desktop, tray apps, clock with calendar, weather, media

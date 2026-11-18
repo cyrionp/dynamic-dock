@@ -103,6 +103,25 @@ export const network = {
   },
 };
 
+let battIds = 0;
+
+/** The battery drawing: outline, cap, fill to `pct`, and a bolt (cut out of
+ * the rest) while charging. */
+function batterySvg(pct, charging) {
+  const id = `bm${++battIds}`;
+  const w = Math.max(pct > 0 ? 1.5 : 0, (19 * Math.min(100, Math.max(0, pct))) / 100);
+  const bolt = "M13.6 1.6 8.4 7.6h3.6l-1.6 4.8 5.4-6.2h-3.7z";
+  return `<svg class="batt-svg" viewBox="0 0 26 13" aria-hidden="true">
+    ${charging ? `<mask id="${id}"><rect x="-2" y="-2" width="30" height="17" fill="#fff"/><path d="${bolt}" fill="#000" stroke="#000" stroke-width="2.4" stroke-linejoin="round"/></mask>` : ""}
+    <g ${charging ? `mask="url(#${id})"` : ""}>
+      <rect class="b-shell" x="0.7" y="0.7" width="22.1" height="11.6" rx="3.4"/>
+      <rect class="b-cap" x="23.8" y="4.3" width="1.9" height="4.4" rx="0.9"/>
+      <rect class="b-fill" x="2.3" y="2.3" width="${w.toFixed(2)}" height="8.4" rx="1.8"/>
+    </g>
+    ${charging ? `<path class="b-bolt" d="${bolt}"/>` : ""}
+  </svg>`;
+}
+
 export const battery = {
   render(el, item, ctx) {
     el.innerHTML = `<button class="batt"></button>`;
@@ -112,8 +131,9 @@ export const battery = {
       el.hidden = s.battery == null;
       if (s.battery == null) return ctx.layoutChanged();
       const low = s.battery <= 15 && !s.charging;
-      b.className = `batt ${low ? "is-low" : ""} ${s.charging ? "is-charging" : ""}`;
-      b.innerHTML = `<span class="batt-body"><i style="width:${s.battery}%"></i>${s.charging ? icon("bolt") : ""}</span>${item.opts.percent ? `<span>${s.battery}%</span>` : ""}`;
+      const mid = !low && s.battery <= 30 && !s.charging;
+      b.className = `batt ${low ? "is-low" : ""} ${mid ? "is-mid" : ""} ${s.charging ? "is-charging" : ""}`;
+      b.innerHTML = `${batterySvg(s.battery, s.charging)}${item.opts.percent ? `<span class="batt-pct">${s.battery}%</span>` : ""}`;
       b._tip = `${t("Battery")} ${s.battery}%${s.charging ? ` · ${t("charging")}` : ""}`;
       ctx.layoutChanged();
     }, 5000);

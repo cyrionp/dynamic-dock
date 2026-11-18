@@ -6,6 +6,7 @@
 //! closed, so it costs nothing in between.
 
 mod apps;
+mod badges;
 mod audio;
 mod config;
 mod icons;
@@ -310,6 +311,11 @@ async fn installed_apps() -> Vec<apps::InstalledApp> {
 }
 
 #[tauri::command]
+async fn badges_list() -> badges::Badges {
+    badges::snapshot()
+}
+
+#[tauri::command]
 async fn taskbar_pins() -> Vec<apps::TaskbarPin> {
     apps::taskbar_pins()
 }
@@ -569,6 +575,7 @@ pub fn run() {
             get_icons,
             installed_apps,
             taskbar_pins,
+            badges_list,
             launch,
             launch_app,
             shortcut,
@@ -603,6 +610,7 @@ pub fn run() {
             spawn_click_through(handle);
             shell::init(handle);
             tasks::init(handle);
+            badges::init(handle);
             media::init(handle);
             audio::init(handle);
             system::init(handle);

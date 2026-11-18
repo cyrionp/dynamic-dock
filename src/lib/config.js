@@ -25,6 +25,7 @@ export const CATALOG = {
       showPinned: { type: "bool", label: "Show pinned apps", default: true },
       showRunning: { type: "bool", label: "Show running apps", default: true },
       group: { type: "bool", label: "Group windows of the same app", default: true },
+      badges: { type: "bool", label: "Show notification counts", default: true },
       labels: { type: "bool", label: "Show window titles", default: false },
       labelWidth: { type: "number", label: "Title width", default: 140, min: 60, max: 320, step: 10, unit: "px" },
       multiClick: {
