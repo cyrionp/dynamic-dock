@@ -12,6 +12,8 @@ pub const ICON_PX: i32 = 96;
 
 #[cfg(windows)]
 pub use imp::get_many;
+#[cfg(windows)]
+pub use imp::icon_data_url;
 
 #[cfg(not(windows))]
 pub fn get_many(keys: Vec<String>) -> std::collections::HashMap<String, Option<String>> {
@@ -33,6 +35,24 @@ mod imp {
     };
     use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
     use windows::Win32::UI::Shell::{IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_ICONONLY};
+    use windows::Win32::UI::WindowsAndMessaging::{GetIconInfo, HICON, ICONINFO};
+
+    /// An icon handle (an app's overlay badge, say) as a PNG `data:` URL.
+    pub fn icon_data_url(icon: HICON) -> Option<String> {
+        unsafe {
+            let mut info = ICONINFO::default();
+            GetIconInfo(icon, &mut info).ok()?;
+            let mask = (!info.hbmMask.is_invalid()).then_some(info.hbmMask);
+            let png = if info.hbmColor.is_invalid() { None } else { to_png_masked(info.hbmColor, mask) };
+            if !info.hbmColor.is_invalid() {
+                let _ = DeleteObject(info.hbmColor.into());
+            }
+            if !info.hbmMask.is_invalid() {
+                let _ = DeleteObject(info.hbmMask.into());
+            }
+            png.map(|bytes| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+        }
+    }
 
     type Reply = Sender<HashMap<String, Option<String>>>;
 
@@ -77,7 +97,7 @@ mod imp {
             let bitmap = factory
                 .GetImage(SIZE { cx: ICON_PX, cy: ICON_PX }, SIIGBF_ICONONLY)
                 .ok()?;
-            let png = to_png(bitmap);
+            let png = to_png_masked(bitmap, None);
             let _ = DeleteObject(bitmap.into());
             png.map(|bytes| {
                 format!(
@@ -88,15 +108,8 @@ mod imp {
         }
     }
 
-    unsafe fn to_png(bitmap: HBITMAP) -> Option<Vec<u8>> {
-        let mut info = BITMAP::default();
-        if GetObjectW(bitmap.into(), std::mem::size_of::<BITMAP>() as i32, Some(&mut info as *mut _ as *mut _)) == 0 {
-            return None;
-        }
-        let (w, h) = (info.bmWidth, info.bmHeight.abs());
-        if w <= 0 || h <= 0 || w > 1024 || h > 1024 {
-            return None;
-        }
+    /// A bitmap's pixels as 32-bit BGRA rows, top to bottom.
+    unsafe fn pixels_of(bitmap: HBITMAP, w: i32, h: i32) -> Option<Vec<u8>> {
         let mut header = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
@@ -122,17 +135,31 @@ mod imp {
             DIB_RGB_COLORS,
         );
         let _ = DeleteDC(dc);
-        if lines == 0 {
+        (lines != 0).then_some(pixels)
+    }
+
+    /// A bitmap as PNG. `mask` is an icon's mask, used when the picture has
+    /// no alpha of its own: white in it is see-through.
+    unsafe fn to_png_masked(bitmap: HBITMAP, mask: Option<HBITMAP>) -> Option<Vec<u8>> {
+        let mut info = BITMAP::default();
+        if GetObjectW(bitmap.into(), std::mem::size_of::<BITMAP>() as i32, Some(&mut info as *mut _ as *mut _)) == 0 {
             return None;
         }
+        let (w, h) = (info.bmWidth, info.bmHeight.abs());
+        if w <= 0 || h <= 0 || w > 1024 || h > 1024 {
+            return None;
+        }
+        let mut pixels = pixels_of(bitmap, w, h)?;
+        let has_alpha = pixels.chunks_exact(4).any(|p| p[3] != 0);
+        let mask = if has_alpha { None } else { mask.and_then(|m| pixels_of(m, w, h)) };
 
         // BGRA, premultiplied → RGBA, straight. A bitmap without any alpha
-        // is opaque.
-        let has_alpha = pixels.chunks_exact(4).any(|p| p[3] != 0);
-        for p in pixels.chunks_exact_mut(4) {
+        // is opaque, apart from what its mask cuts out.
+        for (i, p) in pixels.chunks_exact_mut(4).enumerate() {
             p.swap(0, 2);
             if !has_alpha {
-                p[3] = 255;
+                let clear = mask.as_ref().is_some_and(|m| m[i * 4] != 0);
+                p[3] = if clear { 0 } else { 255 };
             } else if p[3] > 0 && p[3] < 255 {
                 let a = p[3] as u32;
                 for c in &mut p[..3] {

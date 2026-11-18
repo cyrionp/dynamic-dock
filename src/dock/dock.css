@@ -557,6 +557,22 @@ body.is-demo {
   font-size: 0;
 }
 
+/* The picture an app put on its taskbar button, bottom right, like there. */
+.cell-overlay {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  width: 16px;
+  height: 16px;
+  background: center / contain no-repeat;
+  filter: drop-shadow(0 0 1px color-mix(in srgb, #000 55%, transparent));
+  pointer-events: none;
+}
+
+.cell-overlay[hidden] {
+  display: none;
+}
+
 .is-magnifying .cell-icon {
   transition: transform 70ms linear, translate var(--t-fast) var(--ease);
 }

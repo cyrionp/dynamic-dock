@@ -57,6 +57,16 @@ export const badges = source({
   },
 });
 
+// Pictures apps put on their taskbar button (unread counts): window → image.
+export const overlays = source({
+  initial: {},
+  start(s) {
+    if (!inTauri) return s.set(demo.overlays || {});
+    listen("taskband://overlays", s);
+    call("overlays_list").then((v) => v && s.set(v)).catch(() => {});
+  },
+});
+
 export const media = source({
   initial: { hasSession: false },
   start(s) {
