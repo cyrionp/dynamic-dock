@@ -166,6 +166,20 @@ body.is-demo {
   gap: var(--margin);
 }
 
+/* The zone with the open programs may shrink (its icons then scroll); the
+   others keep their size. */
+.bar[data-flex="left"] {
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+}
+
+.bar[data-flex="center"] {
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+}
+
+.bar[data-flex="right"] {
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(0, 1fr);
+}
+
 /* One pill in the middle, or edge to edge. */
 :root[data-style="floating"] .bar,
 :root[data-style="full"] .bar {
@@ -239,6 +253,31 @@ body.is-demo {
   grid-template-columns: 1fr auto 1fr;
 }
 
+.bar[data-flex="left"] .pill.is-full {
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+}
+
+.bar[data-flex="center"] .pill.is-full {
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+}
+
+.bar[data-flex="right"] .pill.is-full {
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(0, 1fr);
+}
+
+/* The single floating pill: only the zone with the programs shrinks. */
+:root[data-style="floating"] .pill {
+  max-width: 100%;
+}
+
+:root[data-style="floating"] .zone {
+  flex: none;
+}
+
+:root[data-style="floating"] .zone.has-apps {
+  flex: 0 1 auto;
+}
+
 :root[data-style="full"] .bar {
   padding: 0;
 }
@@ -282,6 +321,58 @@ body.is-demo {
   align-items: center;
   height: 100%;
   flex: none;
+}
+
+/* Too many programs for the room: the list is cut at the zone's edge (but
+   magnified icons still rise above it) and scrolls with the wheel or the
+   arrows. */
+.it-apps {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.it-apps > .cell {
+  translate: var(--apps-x, 0px) 0;
+}
+
+.apps-more {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 18px;
+  height: calc(var(--item-h) - 8px);
+  margin-top: calc((var(--item-h) - 8px) / -2);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--hover) 60%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.apps-more:hover {
+  background: var(--hover);
+}
+
+.apps-more .ic {
+  width: 12px;
+  height: 12px;
+}
+
+.apps-more-l {
+  left: 0;
+}
+
+.apps-more-r {
+  right: 0;
+}
+
+.it-apps.can-left .apps-more-l,
+.it-apps.can-right .apps-more-r {
+  display: flex;
 }
 
 .it[hidden] {

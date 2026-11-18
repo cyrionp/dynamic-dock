@@ -17,6 +17,7 @@ mod tasks;
 mod volume;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -195,20 +196,38 @@ fn watch_session_end(_app: &AppHandle) {}
 
 /* ---------------- settings window ---------------- */
 
+/// Opens the settings window, or brings it forward.
+///
+/// Always on a thread of its own: creating a window from the main thread
+/// (a tray click, a single-instance wake) or from a synchronous command
+/// can deadlock WebView2, which froze the whole app on some PCs.
 fn open_settings_window(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(SETTINGS) {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
-        return;
-    }
-    let _ = WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("settings.html".into()))
-        .title("Dynamic Dock")
-        .inner_size(1060.0, 740.0)
-        .min_inner_size(820.0, 560.0)
-        .center()
-        .visible(false)
-        .build();
+    static OPENING: AtomicBool = AtomicBool::new(false);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Some(w) = app.get_webview_window(SETTINGS) {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+            return;
+        }
+        // Two quick clicks must not build it twice.
+        if OPENING.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        log::write("opening the settings window");
+        let built = WebviewWindowBuilder::new(&app, SETTINGS, WebviewUrl::App("settings.html".into()))
+            .title("Dynamic Dock")
+            .inner_size(1060.0, 740.0)
+            .min_inner_size(820.0, 560.0)
+            .center()
+            .visible(false)
+            .build();
+        if let Err(e) = &built {
+            log::write(&format!("the settings window can't be opened: {e}"));
+        }
+        OPENING.store(false, Ordering::SeqCst);
+    });
 }
 
 /* ---------------- hotkeys ---------------- */
@@ -395,7 +414,7 @@ fn dock_focus(focus: bool, window: tauri::WebviewWindow) {
 }
 
 #[tauri::command]
-fn open_settings(app: AppHandle) {
+async fn open_settings(app: AppHandle) {
     open_settings_window(&app);
 }
 

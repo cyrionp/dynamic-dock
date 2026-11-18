@@ -206,8 +206,58 @@ export const apps = {
         setTimeout(() => c.remove(), 220);
       }
       el.style.setProperty("--label-w", `${item.opts.labelWidth}px`);
+      scrollBy(0);
       ctx.layoutChanged();
     }
+
+    /* ---------- too many to fit: scroll ---------- */
+
+    el.insertAdjacentHTML(
+      "beforeend",
+      `<button class="apps-more apps-more-l" tabindex="-1">${icon("left")}</button><button class="apps-more apps-more-r" tabindex="-1">${icon("right")}</button>`
+    );
+    let shift = 0;
+    /** How far the icons reach past the visible part, in pixels. */
+    function overflow() {
+      const cs = [...el.querySelectorAll(".cell:not(.is-leaving)")];
+      if (!cs.length) return 0;
+      const last = cs[cs.length - 1];
+      const width = last.offsetLeft + last.offsetWidth - cs[0].offsetLeft;
+      return Math.max(0, Math.ceil(width - el.clientWidth));
+    }
+    function scrollBy(dx) {
+      const max = overflow();
+      const next = Math.max(0, Math.min(max, shift + dx));
+      if (next !== shift) {
+        shift = next;
+        el.style.setProperty("--apps-x", `${-shift}px`);
+      }
+      el.classList.toggle("can-left", shift > 0);
+      el.classList.toggle("can-right", shift < max);
+    }
+    el.addEventListener(
+      "wheel",
+      (ev) => {
+        if (!overflow()) return;
+        // Marked as used, so the dock doesn't switch bars too.
+        ev.preventDefault();
+        scrollBy(ev.deltaY || ev.deltaX);
+      },
+      { passive: false }
+    );
+    for (const [cls, dir] of [
+      [".apps-more-l", -1],
+      [".apps-more-r", 1],
+    ]) {
+      const b = el.querySelector(cls);
+      b.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        scrollBy(dir * Math.max(60, el.clientWidth * 0.75));
+      });
+      b.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+    }
+    const resized = new ResizeObserver(() => scrollBy(0));
+    resized.observe(el);
 
     const entryOf = (c) => entries.find((e) => e.key === c.dataset.key);
 
@@ -504,6 +554,7 @@ export const apps = {
     return {
       destroy() {
         off();
+        resized.disconnect();
         for (const timer of launching.values()) clearTimeout(timer);
       },
     };

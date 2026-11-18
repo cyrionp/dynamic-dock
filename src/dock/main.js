@@ -134,6 +134,10 @@ function buildBar(i, out) {
   el.dataset.index = String(i);
   const style = config.look.style;
   const zones = ZONES.filter((z) => bar.items[z].length);
+  // The zone with the open programs is the one that gives way when the bar
+  // runs out of room, so it never slides under the clock or the others.
+  const flex = ZONES.find((z) => bar.items[z].some((it) => it.type === "apps"));
+  if (flex) el.dataset.flex = flex;
 
   if (style === "split") {
     for (const z of ZONES) {
@@ -142,7 +146,7 @@ function buildBar(i, out) {
       el.append(slot);
       if (!bar.items[z].length) continue;
       const pill = document.createElement("div");
-      pill.className = `pill zone-${z}`;
+      pill.className = `pill zone-${z}${z === flex ? " has-apps" : ""}`;
       slot.append(pill);
       mountItems(pill, bar.items[z], out);
     }
@@ -152,7 +156,7 @@ function buildBar(i, out) {
     el.append(pill);
     for (const z of style === "full" ? ZONES : zones) {
       const group = document.createElement("div");
-      group.className = `zone zone-${z}`;
+      group.className = `zone zone-${z}${z === flex ? " has-apps" : ""}`;
       pill.append(group);
       mountItems(group, bar.items[z], out);
     }
