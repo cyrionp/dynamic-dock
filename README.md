@@ -30,6 +30,13 @@ JavaScript and CSS, so the whole app stays small and light on RAM and CPU.
   player, volume with output device switcher, CPU/RAM/disk stats, network,
   battery, recycle bin, power menu, stopwatch, countdown timers, notes, to-do,
   dock settings, bar switcher, separator and spacer.
+- **A dock cat.** A small cat lives on top of the dock: it walks from island
+  to island, naps, follows the pointer with its eyes, purrs when you rest the
+  pointer on it, chases a darting pointer, does tricks when clicked and can be
+  picked up. Now and then it talks in a bubble or meows (made on the spot, no
+  sound files), gets tired when the processor is busy, worries about a low
+  battery and dances to music. Every part has its own switch in
+  **Settings → Cat**; right-click it or press `Ctrl+Alt+K` to hide it.
 - **Looks.** 11 themes (including one that follows the Windows accent and
   light/dark mode), three bar styles (split pills, floating, full width),
   blur, radius, size, magnification on hover, animation speed and custom CSS.
