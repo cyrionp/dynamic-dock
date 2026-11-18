@@ -12,6 +12,7 @@ mod config;
 mod icons;
 mod log;
 mod media;
+mod previews;
 mod shell;
 mod system;
 mod tasks;
@@ -310,6 +311,13 @@ async fn installed_apps() -> Vec<apps::InstalledApp> {
     apps::installed_apps()
 }
 
+/// Previews of windows (None where there is none, e.g. minimised), each at
+/// most `width`×`height` physical pixels.
+#[tauri::command]
+async fn window_previews(hwnds: Vec<i64>, width: u32, height: u32) -> Vec<Option<String>> {
+    hwnds.into_iter().take(16).map(|h| previews::capture(h, width.min(800), height.min(600))).collect()
+}
+
 #[tauri::command]
 async fn badges_list() -> badges::Badges {
     badges::snapshot()
@@ -576,6 +584,7 @@ pub fn run() {
             installed_apps,
             taskbar_pins,
             badges_list,
+            window_previews,
             launch,
             launch_app,
             shortcut,

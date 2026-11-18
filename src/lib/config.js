@@ -34,6 +34,7 @@ export const CATALOG = {
         default: "list",
         choices: { list: "Show its windows", cycle: "Switch between them", last: "Bring the last one" },
       },
+      previews: { type: "bool", label: "Show window previews in the list", default: true },
       pinned: { type: "list", label: "Pinned apps", default: [] },
     },
   },

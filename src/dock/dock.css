@@ -1816,6 +1816,103 @@ body.is-demo {
   text-overflow: ellipsis;
 }
 
+/* window previews */
+.winlist.is-previews {
+  padding: 10px;
+}
+
+.wcards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.wcard {
+  width: var(--w, 200px);
+  padding: 6px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: width var(--t-med) var(--ease), background var(--t-fast), opacity var(--t-med), transform var(--t-med);
+}
+
+.wcard:hover {
+  background: var(--hover);
+}
+
+.wcard.is-active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.wcard.is-closing {
+  opacity: 0;
+  transform: scale(0.94);
+}
+
+.wcard-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 22px;
+}
+
+.wcard-ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.wcard-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wcard-x {
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+
+.wcard:hover .wcard-x {
+  opacity: 1;
+}
+
+.wcard-shot {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.wcard-shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.wcard-empty {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.wcard.has-shot .wcard-empty {
+  display: none;
+}
+
+.wcard.is-min .wcard-title {
+  color: var(--muted);
+}
+
 /* pin an app */
 .pinpick-search {
   width: 100%;

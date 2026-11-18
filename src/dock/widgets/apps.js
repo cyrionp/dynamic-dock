@@ -85,6 +85,17 @@ function nameOf(w) {
   return base;
 }
 
+/* Window previews: a fixed height, the width follows the window's shape. */
+const PREVIEW_H = 128;
+const PREVIEW_MIN_W = 110;
+const PREVIEW_MAX_W = 260;
+const PREVIEW_DEFAULT_W = 200;
+
+function windowPreviews(wins, width, height) {
+  if (!inTauri) return Promise.resolve(wins.map((w) => (w.minimized ? null : demo.preview(w))));
+  return call("window_previews", { hwnds: wins.map((w) => w.hwnd), width, height });
+}
+
 export const apps = {
   render(el, item, ctx) {
     el.classList.add("apps");
@@ -302,6 +313,7 @@ export const apps = {
     const act = (w, action = "activate") => call("task_action", { hwnd: w.hwnd, action }).catch(() => {});
 
     function windowList(c, e) {
+      if (item.opts.previews) return previewList(c, e);
       ctx.openPopup(c, {
         width: 320,
         className: "winlist",
@@ -333,6 +345,98 @@ export const apps = {
               if (w) act(w, "focus");
             }
           });
+        },
+      });
+    }
+
+    /** The app's windows as live pictures, each shaped like its window, as
+     * the taskbar shows them. */
+    function previewList(c, e) {
+      const H = PREVIEW_H;
+      const gap = 8;
+      const pad = 12; // the pop-up's padding and border, with a pixel to spare
+      const wins = e.wins.slice(0, 12);
+      const widthFor = (n, cards) => Math.min(window.innerWidth - 16, cards.reduce((a, w) => a + w, 0) + gap * (n - 1) + pad * 2);
+      const sizes = new Map(wins.map((w) => [w.hwnd, PREVIEW_DEFAULT_W]));
+      ctx.openPopup(c, {
+        width: widthFor(wins.length, [...sizes.values()]),
+        className: "winlist is-previews",
+        build(body, close) {
+          body.innerHTML = `<div class="wcards">${wins
+            .map(
+              (w) => `<div class="wcard ${w.active ? "is-active" : ""} ${w.minimized ? "is-min" : ""}" data-h="${w.hwnd}" style="--w:${PREVIEW_DEFAULT_W}px">
+                <div class="wcard-head"><img class="wcard-ic" alt="" hidden draggable="false" /><span class="wcard-title">${escapeHtml(w.title)}</span>
+                  <button class="icon-btn wcard-x" data-close="${w.hwnd}" title="${t("Close")}">${icon("close")}</button></div>
+                <div class="wcard-shot" style="height:${H}px"><img alt="" hidden draggable="false" /><span class="wcard-empty">${w.minimized ? t("Minimised") : ""}</span></div>
+              </div>`
+            )
+            .join("")}</div>`;
+          for (const card of body.querySelectorAll(".wcard")) {
+            const w = wins.find((x) => String(x.hwnd) === card.dataset.h);
+            paintIcon(card.querySelector(".wcard-ic"), e.pin ? iconKeyOf(e.pin) : w?.icon, "");
+          }
+          body.addEventListener("click", (ev) => {
+            const x = ev.target.closest("[data-close]");
+            if (x) {
+              const w = wins.find((w) => String(w.hwnd) === x.dataset.close);
+              if (w) act(w, "close");
+              x.closest(".wcard")?.classList.add("is-closing");
+              return;
+            }
+            const card = ev.target.closest("[data-h]");
+            if (card) {
+              const w = wins.find((w) => String(w.hwnd) === card.dataset.h);
+              close();
+              if (w) act(w, "focus");
+            }
+          });
+
+          let alive = true;
+          const dpr = window.devicePixelRatio || 1;
+          const load = async () => {
+            const shots = await windowPreviews(
+              wins,
+              Math.ceil(PREVIEW_MAX_W * dpr),
+              Math.ceil(H * dpr)
+            ).catch(() => []);
+            if (!alive) return;
+            wins.forEach((w, i) => {
+              const card = body.querySelector(`.wcard[data-h="${w.hwnd}"]`);
+              const shot = shots[i];
+              if (!card || !shot) return;
+              const img = card.querySelector(".wcard-shot img");
+              img.onload = () => {
+                if (!alive || !img.naturalHeight) return;
+                // The card takes the window's shape.
+                const cw = Math.round(Math.max(PREVIEW_MIN_W, Math.min(PREVIEW_MAX_W, (H * img.naturalWidth) / img.naturalHeight)));
+                if (sizes.get(w.hwnd) !== cw) {
+                  sizes.set(w.hwnd, cw);
+                  card.style.setProperty("--w", `${cw}px`);
+                  queueResize();
+                }
+              };
+              img.src = shot;
+              img.hidden = false;
+              card.classList.add("has-shot");
+            });
+          };
+          let resizeFrame = 0;
+          const queueResize = () => {
+            cancelAnimationFrame(resizeFrame);
+            resizeFrame = requestAnimationFrame(() => {
+              if (!alive) return;
+              body.style.width = `${widthFor(wins.length, [...sizes.values()])}px`;
+              ctx.repositionPopup();
+            });
+          };
+          load();
+          // Keep them fresh while the list is open.
+          const timer = setInterval(load, 2000);
+          return () => {
+            alive = false;
+            clearInterval(timer);
+            cancelAnimationFrame(resizeFrame);
+          };
         },
       });
     }
