@@ -80,6 +80,7 @@ pub struct Hotkeys {
     pub bar2: String,
     pub bar3: String,
     pub toggle_dock: String,
+    pub toggle_cat: String,
 }
 
 struct Store {

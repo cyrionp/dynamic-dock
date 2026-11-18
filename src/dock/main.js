@@ -12,6 +12,7 @@ import { icon } from "../lib/icons.js";
 import { WIDGETS } from "./widgets/index.js";
 import { pinFromTaskbar } from "./widgets/apps.js";
 import { env as envSource } from "./data.js";
+import { createCat } from "./cat.js";
 import { checkOnLaunch, onUpdate, installUpdate, readVersion } from "../lib/updates.js";
 import {
   openPopup,
@@ -40,6 +41,7 @@ let hovering = false;
 let hidden = false;
 let forcedHidden = false; // the "toggle dock" hotkey
 let magnifyPaused = false;
+let cat = null; // the dock cat, on the main screen's dock
 
 if (!inTauri) document.body.classList.add("is-demo");
 
@@ -190,6 +192,7 @@ function rebuild() {
   barsEl.append(el);
   resetMagnify();
   scheduleHits();
+  requestAnimationFrame(() => cat?.relayout());
 }
 
 /* ---------- switching ---------- */
@@ -217,6 +220,7 @@ function switchTo(i, dir) {
     old?.remove();
     destroyMounted(oldMounted);
     el.classList.add("is-current");
+    cat?.relayout();
     scheduleHits();
     return;
   }
@@ -230,6 +234,7 @@ function switchTo(i, dir) {
     destroyMounted(oldMounted);
     el.classList.remove("is-entering", "go-next", "go-prev");
     switching = false;
+    cat?.relayout();
     scheduleHits();
   };
   // The animation's own length, scaled by the motion speed.
@@ -284,6 +289,7 @@ dock.addEventListener("contextmenu", (e) => {
     "-",
     { label: t("Edit this bar…"), icon: "edit", action: () => openSettings("bars") },
     { label: t("Dock settings"), icon: "sliders", action: () => openSettings() },
+    ...(isPrimaryDock ? [{ label: t("Show the cat"), icon: "cat", checked: config.cat.enabled, action: () => saveCat({ enabled: !config.cat.enabled }) }] : []),
     { label: t("Task Manager"), icon: "cpu", action: () => call("launch", { target: "taskmgr.exe" }).catch(() => {}) },
   ]);
 });
@@ -402,6 +408,7 @@ function reportHits() {
       const extra = hovering ? headroom : 0;
       rects.push({ x: r.left - 2, y: (top ? r.top : r.top - extra) - 2, width: r.width + 4, height: r.height + extra + 4 });
     }
+    if (cat) rects.push(...cat.rects());
     rects.push(...layerRects());
   }
   const key = JSON.stringify(rects.map((r) => [r.x, r.y, r.width, r.height].map(Math.round)));
@@ -411,12 +418,40 @@ function reportHits() {
 }
 
 new ResizeObserver(scheduleHits).observe(barsEl);
-window.addEventListener("resize", scheduleHits);
+window.addEventListener("resize", () => {
+  scheduleHits();
+  cat?.relayout();
+});
 dock.addEventListener("transitionend", scheduleHits);
 onLayerChange(() => {
   updateHidden();
   scheduleHits();
 });
+
+/* ---------- the cat ---------- */
+
+async function saveCat(patch) {
+  config.cat = { ...config.cat, ...patch };
+  config = await saveConfig(config);
+  if (!inTauri) applyCat();
+}
+
+function applyCat() {
+  // One cat, on the main screen's dock.
+  if (!isPrimaryDock) return;
+  cat ??= createCat({
+    dock,
+    bars: barsEl,
+    save: saveCat,
+    hits: scheduleHits,
+    menu: openMenu,
+    settings: () => openSettings("cat"),
+    hidden: () => hidden || env.fullscreen,
+    top: () => config.shell.position === "top",
+    reduced: () => root.dataset.reduce === "true",
+  });
+  cat.update(config.cat);
+}
 
 /* ---------- settings ---------- */
 
@@ -506,6 +541,7 @@ async function boot() {
   if (inTauri && isPrimaryDock && !config.pinsImported) await importTaskbarPins();
   applyConfig();
   rebuild();
+  applyCat();
   armReturn();
   readVersion().catch(() => {});
   // One update check and offer, on the main screen's dock.
@@ -516,6 +552,7 @@ async function boot() {
     config = next;
     applyConfig();
     rebuild();
+    applyCat();
     updateHidden();
   });
 
@@ -533,7 +570,9 @@ async function boot() {
       if (action === "nextBar") switchTo(barIndex + 1, 1);
       else if (action === "previousBar") switchTo(barIndex - 1, -1);
       else if (/^bar\d$/.test(action)) switchTo(Number(action.slice(3)) - 1);
-      else if (action === "toggleDock") {
+      else if (action === "toggleCat") {
+        if (isPrimaryDock) saveCat({ enabled: !config.cat.enabled });
+      } else if (action === "toggleDock") {
         forcedHidden = !forcedHidden;
         updateHidden();
       }
@@ -543,6 +582,7 @@ async function boot() {
     window.addEventListener("keydown", (e) => {
       if (e.ctrlKey && e.altKey && e.key === "ArrowRight") switchTo(barIndex + 1, 1);
       if (e.ctrlKey && e.altKey && e.key === "ArrowLeft") switchTo(barIndex - 1, -1);
+      if (e.ctrlKey && e.altKey && e.code === "KeyK") saveCat({ enabled: !config.cat.enabled });
     });
     document.body.insertAdjacentHTML("afterbegin", `<div class="demo-note">${icon("info")} ${t("Preview in a browser: sample data, no Windows.")}</div>`);
   }

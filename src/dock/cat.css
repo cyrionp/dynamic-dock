@@ -1,0 +1,665 @@
+/* ==========================================================================
+   The dock cat (cat.js, cat-art.js). It stands on the top edge of the bars.
+   Poses are `data-pose` on .cat; faces and one-shot moves are classes.
+   Only transforms and opacity animate, so the compositor does the work.
+   ========================================================================== */
+
+.cat {
+  --cat-w: 46px;
+  --cat-h: 34.5px;
+  --lx: 0px;
+  --ly: 0px;
+  --col: rgba(40, 24, 12, 0.55);
+  --ink: #2a221d;
+  position: absolute;
+  left: 0;
+  bottom: calc(100% - 2px);
+  width: var(--cat-w);
+  height: var(--cat-h);
+  will-change: transform;
+  touch-action: none;
+}
+
+.cat[data-fur="black"] {
+  --col: #75758a;
+  --ink: #c9c9d6;
+}
+
+.cat[data-fur="white"] {
+  --col: rgba(60, 50, 40, 0.5);
+}
+
+:root[data-position="top"] .cat {
+  bottom: auto;
+  top: calc(100% - 2px);
+}
+
+.cat-hop,
+.cat-spin,
+.cat-flip {
+  position: absolute;
+  inset: 0;
+}
+
+.cat-flip {
+  transition: transform calc(160ms * var(--speed)) ease;
+}
+
+.cat.is-left .cat-flip {
+  transform: scaleX(-1);
+}
+
+.cat-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* ---------- parts ---------- */
+
+.cat-svg * {
+  transform-box: fill-box;
+}
+
+.c-fur,
+.c-limb {
+  fill: var(--cf);
+  stroke: var(--col);
+  stroke-width: 0.9;
+}
+
+.c-ff .c-limb,
+.c-bf .c-limb {
+  fill: var(--cd);
+}
+
+.c-sock,
+.c-belly {
+  fill: var(--cb);
+}
+
+.c-stripe {
+  fill: none;
+  stroke: var(--cs);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.c-inner {
+  fill: #f4a3b1;
+}
+
+.c-blush {
+  fill: #ff8fa3;
+  opacity: 0.45;
+}
+
+.c-iris {
+  fill: var(--ce);
+}
+
+.c-pupil {
+  fill: var(--cp);
+}
+
+.c-shine {
+  fill: #fff;
+}
+
+.c-ink,
+.c-whisker {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+.c-whisker {
+  stroke-width: 0.55;
+  opacity: 0.6;
+}
+
+.c-smile {
+  stroke-width: 0.8;
+}
+
+.c-nose {
+  fill: #e7798b;
+}
+
+.c-mouth {
+  fill: #7b2e3c;
+  transform: scale(0);
+  transform-origin: 50% 0;
+  transition: transform calc(120ms * var(--speed)) ease;
+}
+
+.c-tongue {
+  fill: #f27c92;
+  opacity: 0;
+}
+
+.c-tail-ol {
+  fill: none;
+  stroke: var(--col);
+  stroke-width: 6.2;
+  stroke-linecap: round;
+}
+
+.c-tail-fill {
+  fill: none;
+  stroke: var(--cf);
+  stroke-width: 4.4;
+  stroke-linecap: round;
+}
+
+.c-shut,
+.c-joy {
+  opacity: 0;
+}
+
+.c-eye {
+  transform-origin: 50% 50%;
+  transition: transform 80ms ease;
+}
+
+.c-look {
+  transform: translate(var(--lx), var(--ly));
+  transition: transform 160ms ease;
+}
+
+.c-head {
+  transform-origin: 40% 90%;
+  transition: transform calc(240ms * var(--speed)) var(--ease);
+}
+
+.c-ear {
+  transform-origin: 50% 100%;
+  transition: transform calc(200ms * var(--speed)) ease;
+}
+
+.c-tail {
+  transform-origin: 100% 100%;
+  transition: transform calc(300ms * var(--speed)) ease;
+}
+
+.c-torso,
+.c-awake,
+.c-leg,
+.c-paw {
+  transition: transform calc(240ms * var(--speed)) var(--ease);
+}
+
+.c-leg {
+  transform-origin: 50% 8%;
+}
+
+.c-paw {
+  transform-origin: 50% 8%;
+}
+
+.c-awake {
+  transform-origin: 50% 100%;
+}
+
+.c-haunch,
+.c-curl {
+  display: none;
+}
+
+/* ---------- faces ---------- */
+
+.cat.is-blink .c-eye {
+  transform: scaleY(0.1);
+}
+
+.cat.is-half .c-eye {
+  transform: scaleY(0.45);
+}
+
+.cat.is-shut .c-eye,
+.cat.is-joy .c-eye {
+  opacity: 0;
+}
+
+.cat.is-shut .c-shut,
+.cat.is-joy .c-joy {
+  opacity: 1;
+}
+
+.cat.is-meow .c-mouth {
+  transform: scale(1);
+}
+
+.cat.is-meow .c-smile,
+.cat.is-yawn .c-smile {
+  opacity: 0;
+}
+
+.cat.is-yawn .c-mouth {
+  transform: scale(1.35, 1.6);
+}
+
+.cat.is-tongue .c-tongue {
+  opacity: 1;
+}
+
+.cat.is-alert .c-ear {
+  transform: translateY(-0.8px) scaleY(1.06);
+}
+
+.cat.is-alert .c-head {
+  transform: rotate(-5deg);
+}
+
+.cat.is-twitch .c-ear-r {
+  animation: cat-twitch calc(380ms * var(--speed)) ease;
+}
+
+/* ---------- poses ---------- */
+
+/* Sitting: the back legs fold into a haunch, the front rises. */
+.cat[data-pose="sit"] .c-back,
+.cat[data-pose="sleep"] .c-back {
+  display: none;
+}
+
+.cat[data-pose="sit"] .c-haunch {
+  display: inline;
+}
+
+.cat[data-pose="sit"] .c-torso {
+  transform: rotate(-16deg) translate(-1px, -1px);
+  transform-origin: 20% 90%;
+}
+
+.cat[data-pose="sit"] .c-head {
+  transform: translate(-2.5px, -2px);
+}
+
+.cat[data-pose="sit"].is-alert .c-head {
+  transform: translate(-2.5px, -2.6px) rotate(-6deg);
+}
+
+.cat[data-pose="sit"] .c-ff,
+.cat[data-pose="sit"] .c-paw {
+  transform: translateX(-2.5px);
+}
+
+.cat[data-pose="sit"] .c-tail {
+  transform: rotate(-58deg) translate(2px, 3px);
+}
+
+/* Walking and running: legs swing, the body bobs, the tail is up. */
+.cat[data-pose="walk"] .c-bn,
+.cat[data-pose="walk"] .c-ff,
+.cat[data-pose="run"] .c-bn,
+.cat[data-pose="run"] .c-ff {
+  animation: cat-step calc(520ms * var(--speed)) ease-in-out infinite;
+}
+
+.cat[data-pose="walk"] .c-bf,
+.cat[data-pose="walk"] .c-fn,
+.cat[data-pose="run"] .c-bf,
+.cat[data-pose="run"] .c-fn {
+  animation: cat-step calc(520ms * var(--speed)) ease-in-out calc(-260ms * var(--speed)) infinite;
+}
+
+.cat[data-pose="walk"] .c-awake {
+  animation: cat-bob calc(260ms * var(--speed)) ease-in-out infinite alternate;
+}
+
+.cat[data-pose="walk"] .c-tail,
+.cat[data-pose="run"] .c-tail {
+  transform: rotate(14deg);
+}
+
+.cat[data-pose="run"] .c-leg {
+  animation-duration: calc(300ms * var(--speed)) !important;
+}
+
+.cat[data-pose="run"] .c-awake {
+  animation: cat-bob calc(150ms * var(--speed)) ease-in-out infinite alternate;
+}
+
+/* Sleeping: curled up. It breathes a while, then lies still. */
+.cat[data-pose="sleep"] .c-awake {
+  display: none;
+}
+
+.cat[data-pose="sleep"] .c-curl {
+  display: inline;
+}
+
+.c-breathe {
+  transform-origin: 50% 100%;
+}
+
+.cat[data-pose="sleep"]:not(.is-deep) .c-breathe {
+  animation: cat-breathe 3.2s ease-in-out infinite;
+}
+
+/* Being carried: legs hang, tail down. */
+.cat[data-pose="held"] .cat-hop {
+  transform: translateY(-14px) rotate(-4deg);
+  transition: transform 160ms var(--spring);
+}
+
+.cat[data-pose="held"] .c-leg {
+  transform: translateY(1.5px);
+}
+
+.cat[data-pose="held"] .c-tail {
+  transform: rotate(-80deg) translate(3px, 6px);
+}
+
+.cat[data-pose="held"] .c-awake {
+  animation: cat-dangle 900ms ease-in-out infinite alternate;
+}
+
+/* ---------- moves ---------- */
+
+.cat.is-hop .cat-hop {
+  animation: cat-hop var(--hop-ms, 480ms) cubic-bezier(0.3, 0.1, 0.4, 1);
+}
+
+.cat.is-spin .cat-spin {
+  animation: cat-spin calc(1300ms * var(--speed)) ease-in-out;
+}
+
+.cat.is-roll .cat-spin {
+  animation: cat-roll calc(900ms * var(--speed)) ease-in-out;
+}
+
+.cat.is-swipe .c-paw {
+  animation: cat-swipe calc(420ms * var(--speed)) ease-out;
+}
+
+.cat.is-flick .c-tail {
+  animation: cat-flick calc(1300ms * var(--speed)) ease-in-out;
+}
+
+.cat.is-crouch .c-awake {
+  transform: scaleY(0.86) scaleX(1.05);
+  animation: cat-wiggle 130ms ease-in-out infinite alternate;
+}
+
+.cat.is-groom .c-paw {
+  transform: translate(3px, -8px) rotate(-150deg);
+}
+
+.cat.is-groom .c-head {
+  animation: cat-lick 520ms ease-in-out infinite alternate;
+}
+
+.cat.is-stretch .c-awake {
+  transform: scale(1.08, 0.9);
+}
+
+.cat.is-stretch .c-tail {
+  transform: rotate(30deg);
+}
+
+.cat.is-dance .c-head {
+  animation: cat-nod 500ms ease-in-out infinite alternate;
+}
+
+.cat.is-dance .c-tail {
+  animation: cat-flick 1000ms ease-in-out infinite;
+}
+
+.cat.is-eat .c-head {
+  animation: cat-eat 300ms ease-in-out infinite alternate;
+}
+
+.cat.is-pet .c-head {
+  transform: translate(-2.5px, -1px) rotate(8deg);
+}
+
+.cat.is-pet .c-tail {
+  animation: cat-flick 1600ms ease-in-out infinite;
+}
+
+/* ---------- little things that float up ---------- */
+
+.cat-fx {
+  position: absolute;
+  left: 50%;
+  bottom: 70%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.cat-p {
+  position: absolute;
+  left: -5px;
+  bottom: 0;
+  font: 700 11px/1 var(--font);
+  opacity: 0;
+  animation: cat-float 1.8s ease-out forwards;
+}
+
+.cat-p-heart {
+  color: #ff5d7a;
+  font-size: 12px;
+}
+
+.cat-p-z {
+  color: var(--fg);
+  left: 6px;
+  animation: cat-z 2.6s ease-out forwards;
+}
+
+.cat-p-note {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.cat-p-sweat,
+.cat-p-fish {
+  font-size: 11px;
+}
+
+/* ---------- speech bubble ---------- */
+
+.cat-bubble {
+  --bx: 0px;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  max-width: 220px;
+  width: max-content;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: var(--pop);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(calc(-50% + var(--bx)), 6px) scale(0.85);
+  transform-origin: 50% 100%;
+  transition: opacity calc(180ms * var(--speed)) ease, transform calc(240ms * var(--speed)) var(--spring);
+}
+
+.cat-bubble::after {
+  content: "";
+  position: absolute;
+  left: calc(50% - var(--bx) - 5px);
+  bottom: -5px;
+  width: 9px;
+  height: 9px;
+  background: inherit;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  transform: rotate(45deg);
+}
+
+.cat-bubble.is-on {
+  opacity: 1;
+  transform: translate(calc(-50% + var(--bx)), 0) scale(1);
+}
+
+:root[data-position="top"] .cat-bubble {
+  bottom: auto;
+  top: calc(100% + 10px);
+  transform-origin: 50% 0;
+}
+
+:root[data-position="top"] .cat-bubble::after {
+  bottom: auto;
+  top: -5px;
+  transform: rotate(225deg);
+}
+
+:root[data-position="top"] .cat-fx {
+  bottom: auto;
+  top: 100%;
+}
+
+/* ---------- keyframes ---------- */
+
+@keyframes cat-step {
+  0%,
+  100% {
+    transform: rotate(18deg);
+  }
+  50% {
+    transform: rotate(-18deg);
+  }
+}
+
+@keyframes cat-bob {
+  to {
+    transform: translateY(-0.8px);
+  }
+}
+
+@keyframes cat-breathe {
+  50% {
+    transform: scaleY(1.05);
+  }
+}
+
+@keyframes cat-dangle {
+  from {
+    transform: rotate(-4deg);
+  }
+  to {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes cat-hop {
+  40% {
+    transform: translateY(-14px);
+  }
+  80% {
+    transform: translateY(0) scaleY(0.9);
+  }
+}
+
+@keyframes cat-spin {
+  to {
+    transform: rotateY(720deg);
+  }
+}
+
+@keyframes cat-roll {
+  40% {
+    transform: translateY(-10px) rotate(-200deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes cat-swipe {
+  40% {
+    transform: translate(2px, -6px) rotate(-95deg);
+  }
+}
+
+@keyframes cat-flick {
+  30% {
+    transform: rotate(18deg);
+  }
+  60% {
+    transform: rotate(-12deg);
+  }
+}
+
+@keyframes cat-twitch {
+  50% {
+    transform: rotate(14deg);
+  }
+}
+
+@keyframes cat-wiggle {
+  from {
+    transform: scaleY(0.86) scaleX(1.05) rotate(-2deg);
+  }
+  to {
+    transform: scaleY(0.86) scaleX(1.05) rotate(2deg);
+  }
+}
+
+@keyframes cat-lick {
+  from {
+    transform: translate(-1px, 1px) rotate(6deg);
+  }
+  to {
+    transform: translate(-1px, 2px) rotate(12deg);
+  }
+}
+
+@keyframes cat-nod {
+  from {
+    transform: translate(-2.5px, -2px) rotate(-7deg);
+  }
+  to {
+    transform: translate(-2.5px, -1px) rotate(7deg);
+  }
+}
+
+@keyframes cat-eat {
+  from {
+    transform: translate(-1px, 2px) rotate(10deg);
+  }
+  to {
+    transform: translate(-1px, 4px) rotate(16deg);
+  }
+}
+
+@keyframes cat-float {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), -30px) scale(1.1);
+  }
+}
+
+@keyframes cat-z {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.6);
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--dx) + 14px), -26px) scale(1.2);
+  }
+}
