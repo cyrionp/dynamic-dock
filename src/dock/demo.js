@@ -47,6 +47,10 @@ export const demo = {
     w(6, "Explorer", "Downloads", { minimized: true }),
   ],
   badges: { "c:\\program files\\discord.exe": "3", "c:\\program files\\spotify.exe": "•" },
+  // A picture an app put on its taskbar button (as WhatsApp does).
+  overlays: {
+    3: `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#25d366"/><text x="8" y="12" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#fff">5</text></svg>')}`,
+  },
   media: {
     hasSession: true,
     playing: true,

@@ -6,7 +6,7 @@ import { call, inTauri } from "../../lib/tauri.js";
 import { icon } from "../../lib/icons.js";
 import { escapeHtml, baseName, prettyName } from "../../lib/util.js";
 import { t } from "../../lib/i18n.js";
-import { tasks, badges, paintIcon } from "../data.js";
+import { tasks, badges, overlays, paintIcon } from "../data.js";
 import { demo } from "../demo.js";
 import { load, save } from "../../lib/store.js";
 
@@ -177,7 +177,7 @@ export const apps = {
     }
 
     function cellHtml(e) {
-      return `<span class="cell-icon"><img alt="" hidden draggable="false" /><b class="cell-badge" hidden></b></span><span class="cell-label"></span><span class="cell-ind"></span>`;
+      return `<span class="cell-icon"><img alt="" hidden draggable="false" /><b class="cell-badge" hidden></b><i class="cell-overlay" hidden></i></span><span class="cell-label"></span><span class="cell-ind"></span>`;
     }
 
     function paint() {
@@ -210,8 +210,16 @@ export const apps = {
         c.classList.toggle("is-hidden-all", running && e.wins.every((w) => w.minimized));
         c.dataset.count = String(Math.min(3, e.wins.length));
         c.querySelector(".cell-ind").innerHTML = running ? "<i></i>".repeat(Math.min(3, e.wins.length)) : "";
-        // The app's notification count, as on the taskbar.
-        const badge = item.opts.badges ? badgeOf(e) : "";
+        // The app's notification count, as on the taskbar: the picture the
+        // app put on its taskbar button, or else the count Windows keeps.
+        const overlay = item.opts.badges && !e.folder ? overlayOf(e.wins) : "";
+        const o = c.querySelector(".cell-overlay");
+        if (o._src !== overlay) {
+          o._src = overlay;
+          o.style.backgroundImage = overlay ? `url("${overlay}")` : "";
+        }
+        o.hidden = !overlay;
+        const badge = item.opts.badges && !overlay ? badgeOf(e) : "";
         const b = c.querySelector(".cell-badge");
         if (b.textContent !== badge) b.textContent = badge;
         b.hidden = !badge;
@@ -300,6 +308,9 @@ export const apps = {
     const entryOf = (c) => entries.find((e) => e.key === c.dataset.key);
 
     let badgeMap = {};
+    let overlayMap = {};
+    /** The overlay picture one of these windows put on its taskbar button. */
+    const overlayOf = (wins) => wins.map((w) => overlayMap[String(w.hwnd)]).find(Boolean) || "";
     function badgeOf(e) {
       if (e.folder) {
         // A folder adds up its apps' counts (or shows a dot).
@@ -313,6 +324,8 @@ export const apps = {
         return sum > 99 ? "99+" : sum ? String(sum) : dot ? "•" : "";
       }
       const ids = [e.pin?.id, ...e.wins.map((w) => w.appId)];
+      // A folder can't add up pictures: an app with one counts as a dot.
+      if (overlayOf(e.wins)) return badgeMap[lower(ids.find((id) => id && badgeMap[lower(id)]) || "")] || "•";
       for (const id of ids) {
         const v = id && badgeMap[lower(id)];
         if (v) return v;
@@ -646,9 +659,10 @@ export const apps = {
             <div class="folder-grid">${folder.apps
               .map((a, i) => {
                 const wins = windows.filter((w) => matches(a, w));
-                const badge = item.opts.badges ? badgeOf({ pin: a, wins }) : "";
+                const overlay = item.opts.badges ? overlayOf(wins) : "";
+                const badge = item.opts.badges && !overlay ? badgeOf({ pin: a, wins }) : "";
                 return `<button class="folder-app ${wins.length ? "is-running" : ""}" data-i="${i}">
-                  <span class="folder-ic"><img alt="" hidden draggable="false" />${badge ? `<b class="cell-badge ${badge === "•" ? "is-dot" : ""}">${escapeHtml(badge === "•" ? "" : badge)}</b>` : ""}</span>
+                  <span class="folder-ic"><img alt="" hidden draggable="false" />${overlay ? `<i class="cell-overlay" style="background-image:url('${overlay}')"></i>` : ""}${badge ? `<b class="cell-badge ${badge === "•" ? "is-dot" : ""}">${escapeHtml(badge === "•" ? "" : badge)}</b>` : ""}</span>
                   <span class="folder-label">${escapeHtml(a.name || baseName(a.path || a.id))}</span>
                   <i class="folder-dot"></i>
                 </button>`;
@@ -915,11 +929,16 @@ export const apps = {
       badgeMap = map || {};
       paint();
     });
+    const offOverlays = overlays.subscribe((map) => {
+      overlayMap = map || {};
+      paint();
+    });
     paint();
     return {
       destroy() {
         off();
         offBadges();
+        offOverlays();
         resized.disconnect();
         for (const timer of launching.values()) clearTimeout(timer);
       },

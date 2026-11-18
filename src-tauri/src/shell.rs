@@ -211,6 +211,7 @@ mod imp {
         for hwnd in bars {
             appbar_send_remove(HWND(hwnd as _));
         }
+        crate::taskband::restore();
         restore_now();
     }
 
@@ -293,6 +294,7 @@ mod imp {
             }
         }
         std::thread::sleep(Duration::from_millis(300));
+        crate::taskband::restore();
         restore_now();
     }
 
@@ -321,6 +323,7 @@ mod imp {
         if read_journal().is_some() {
             log!("watchdog: the dock (pid {pid}) ended without restoring the taskbar");
         }
+        crate::taskband::restore();
         restore_now();
     }
 

@@ -9,7 +9,11 @@
 //!
 //! The database is opened read-only with the SQLite that ships with Windows
 //! (`winsqlite3.dll`), loaded at run time, so nothing is added to the app and
-//! a PC without it simply shows no badges.
+//! a PC without it simply shows no badges. When Windows keeps the file locked,
+//! a copy of it (taken again only when it changes) is read instead.
+//!
+//! Apps that draw their count on their taskbar button instead (WhatsApp,
+//! Discord, Teams…) are covered by `taskband`.
 
 use std::collections::BTreeMap;
 
@@ -51,6 +55,7 @@ fn badge_text(payload: &str) -> Option<String> {
 mod imp {
     use super::{badge_text, Badges, BADGES_EVENT};
     use std::ffi::{c_char, c_int, c_void, CString};
+    use std::path::{Path, PathBuf};
     use std::sync::Mutex;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::{AppHandle, Emitter};
@@ -74,14 +79,35 @@ mod imp {
                     return;
                 };
                 let Some(path) = std::env::var_os("LOCALAPPDATA")
-                    .map(|d| std::path::PathBuf::from(d).join(r"Microsoft\Windows\Notifications\wpndatabase.db"))
+                    .map(|d| PathBuf::from(d).join(r"Microsoft\Windows\Notifications\wpndatabase.db"))
                 else {
                     return;
                 };
+                crate::log::write(&format!("badges: reading {}", path.display()));
+                let copy = std::env::temp_dir().join("DynamicDock-wpndatabase.db");
+                let mut copied: Option<Stamp> = None;
                 let mut failed = false;
+                let mut logged = false;
                 loop {
-                    match sql.read(&path) {
+                    let mut via_copy = false;
+                    let result = sql.read(&path).or_else(|e| {
+                        via_copy = true;
+                        // Locked by Windows: read a copy, made again only once
+                        // the original has changed.
+                        let now = stamp(&path);
+                        if copied.as_ref() != Some(&now) {
+                            copy_db(&path, &copy).map_err(|c| format!("{e}; copying it failed too: {c}"))?;
+                            copied = Some(now);
+                        }
+                        sql.read(&copy).map_err(|c| format!("{e}; reading a copy failed too: {c}"))
+                    });
+                    match result {
                         Ok(badges) => {
+                            if !logged || failed {
+                                logged = true;
+                                let how = if via_copy { "a copy of " } else { "" };
+                                crate::log::write(&format!("badges: reading {how}the notification database works"));
+                            }
                             failed = false;
                             let changed = CURRENT.lock().map(|mut c| {
                                 if *c == badges {
@@ -92,6 +118,8 @@ mod imp {
                                 }
                             });
                             if changed.unwrap_or(false) {
+                                let list: Vec<String> = badges.iter().map(|(app, b)| format!("{app} = {b}")).collect();
+                                crate::log::write(&format!("badges: now {}", if list.is_empty() { "none".into() } else { list.join(", ") }));
                                 let _ = app.emit(BADGES_EVENT, badges);
                             }
                         }
@@ -107,6 +135,36 @@ mod imp {
                 }
             })
             .ok();
+    }
+
+    /// Size and change time of the database and its journal.
+    type Stamp = Vec<(u64, Option<SystemTime>)>;
+
+    fn stamp(db: &Path) -> Stamp {
+        [db.to_path_buf(), with_suffix(db, "-wal")]
+            .iter()
+            .map(|f| std::fs::metadata(f).map(|m| (m.len(), m.modified().ok())).unwrap_or((0, None)))
+            .collect()
+    }
+
+    fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
+        let mut name = path.as_os_str().to_owned();
+        name.push(suffix);
+        PathBuf::from(name)
+    }
+
+    /// Copies the database with its write-ahead journal (where the newest
+    /// rows wait); SQLite rebuilds the rest when it opens the copy.
+    fn copy_db(from: &Path, to: &Path) -> Result<(), String> {
+        std::fs::copy(from, to).map_err(|e| e.to_string())?;
+        let wal = with_suffix(from, "-wal");
+        let _ = std::fs::remove_file(with_suffix(to, "-shm"));
+        if wal.exists() {
+            std::fs::copy(&wal, with_suffix(to, "-wal")).map_err(|e| e.to_string())?;
+        } else {
+            let _ = std::fs::remove_file(with_suffix(to, "-wal"));
+        }
+        Ok(())
     }
 
     type Db = *mut c_void;

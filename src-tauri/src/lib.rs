@@ -15,6 +15,7 @@ mod media;
 mod previews;
 mod shell;
 mod system;
+mod taskband;
 mod tasks;
 mod volume;
 
@@ -319,6 +320,11 @@ async fn window_previews(hwnds: Vec<i64>, width: u32, height: u32) -> Vec<Option
 }
 
 #[tauri::command]
+async fn overlays_list() -> taskband::Overlays {
+    taskband::snapshot()
+}
+
+#[tauri::command]
 async fn badges_list() -> badges::Badges {
     badges::snapshot()
 }
@@ -584,6 +590,7 @@ pub fn run() {
             installed_apps,
             taskbar_pins,
             badges_list,
+            overlays_list,
             window_previews,
             launch,
             launch_app,
@@ -620,6 +627,7 @@ pub fn run() {
             shell::init(handle);
             tasks::init(handle);
             badges::init(handle);
+            taskband::init(handle);
             media::init(handle);
             audio::init(handle);
             system::init(handle);
