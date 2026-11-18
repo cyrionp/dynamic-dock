@@ -902,3 +902,9 @@ p.row-hint {
     grid-template-columns: 1fr;
   }
 }
+
+/* The cat's options, greyed while the cat is off. */
+.cat-opts.is-off {
+  opacity: 0.45;
+  pointer-events: none;
+}

@@ -249,6 +249,7 @@ export function defaults() {
       bar2: "Ctrl+Alt+2",
       bar3: "Ctrl+Alt+3",
       toggleDock: "Ctrl+Alt+D",
+      toggleCat: "Ctrl+Alt+K",
     },
     look: {
       theme: "midnight",
@@ -284,6 +285,27 @@ export function defaults() {
       autoHideDelay: 500,
       returnToMain: 0,
       tooltips: true,
+    },
+    // The cat that lives on the dock (dock/cat.js). Every part can be
+    // turned off on its own.
+    cat: {
+      enabled: true,
+      name: "Tarçın",
+      fur: "ginger",
+      size: 1.2,
+      roam: true,
+      sleep: true,
+      hover: true,
+      play: true,
+      bubbles: true,
+      bubbleRate: "sometimes",
+      sound: true,
+      meowRate: "rare",
+      purr: true,
+      volume: 0.5,
+      quietNight: true,
+      system: true,
+      breaks: "0",
     },
     updates: {
       // Look for a new release a little after start-up.

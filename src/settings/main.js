@@ -89,6 +89,7 @@ const SECTIONS = [
   ["general", "sliders", "General"],
   ["look", "palette", "Appearance"],
   ["motion", "sparkle", "Animations"],
+  ["cat", "cat", "Cat"],
   ["bars", "layers", "Bars & widgets"],
   ["hotkeys", "keyboard", "Shortcuts"],
   ["updates", "download", "Updates & about"],
@@ -180,6 +181,48 @@ function motion() {
       ${row(t("Switching bars"), select("motion.switchStyle", { slide: "Slide", fade: "Fade", zoom: "Zoom", flip: "Flip", rise: "Rise", none: "None" }))}
       ${row(t("Animation speed"), range("motion.speed", 0.5, 2, 0.1, "×"), t("Higher is faster."))}
       ${row(t("Reduce motion"), toggle("motion.reduce"), t("Turns animations off almost entirely."))}
+    </div>`;
+}
+
+function cat() {
+  const c = config.cat;
+  const off = c.enabled ? "" : " is-off";
+  const rate = { rare: "Rarely", sometimes: "Sometimes", often: "Often" };
+  return `<h2>${t("Cat")}</h2>
+    <p class="lead">${t("A little cat lives on your dock. It walks around, naps, plays with the pointer and tells you things now and then. Right-click it for more.")}</p>
+    <div class="card">
+      ${row(t("Show the cat"), toggle("cat.enabled"), t("Shortcut: {key}. Right-click the cat to hide it too.", { key: escapeHtml(config.hotkeys.toggleCat || "—") }))}
+    </div>
+    <div class="cat-opts${off}">
+    <h3>${t("Looks")}</h3>
+    <div class="card">
+      ${row(t("Name"), text("cat.name", "Tarçın"))}
+      ${row(t("Fur"), select("cat.fur", { ginger: "Ginger tabby", grey: "Grey", black: "Black", white: "White", brown: "Brown" }))}
+      ${row(t("Size"), range("cat.size", 0.6, 1.6, 0.1, "×"))}
+    </div>
+    <h3>${t("What it does")}</h3>
+    <div class="card">
+      ${row(t("Walks around the dock"), toggle("cat.roam"), t("From island to island, hopping over the gaps."))}
+      ${row(t("Naps when left alone"), toggle("cat.sleep"))}
+      ${row(t("Reacts to the pointer"), toggle("cat.hover"), t("Looks at it, wakes up, purrs when you rest the pointer on it."))}
+      ${row(t("Plays"), toggle("cat.play"), t("Chases a pointer that darts past, does tricks when clicked, can be picked up and moved."))}
+      ${row(t("Notices the computer"), toggle("cat.system"), t("Gets tired when the processor is busy, worries about a low battery, dances to music."))}
+      ${row(t("Break reminders"), select("cat.breaks", { 0: "Off", 30: "Every 30 minutes", 45: "Every 45 minutes", 60: "Every hour", 90: "Every 90 minutes" }), t("The cat stretches and tells you to take a break."))}
+    </div>
+    <h3>${t("Talking")}</h3>
+    <div class="card">
+      ${row(t("Speech bubbles"), toggle("cat.bubbles"))}
+      ${row(t("How often it talks"), select("cat.bubbleRate", rate))}
+    </div>
+    <h3>${t("Sounds")}</h3>
+    <div class="card">
+      ${row(t("Meows"), toggle("cat.sound"), t("Made on the spot, no sound files."))}
+      ${row(t("How often it meows by itself"), select("cat.meowRate", rate), t("It also meows when you click it."))}
+      ${row(t("Purrs when petted"), toggle("cat.purr"))}
+      ${row(t("Volume"), range("cat.volume", 0, 1, 0.05))}
+      ${row(t("Quiet at night"), toggle("cat.quietNight"), t("No sounds of its own between 23:00 and 08:00."))}
+      ${row(t("Try it"), `<button class="ghost" data-cat-meow>${icon("volume")} ${t("Meow")}</button>`)}
+    </div>
     </div>`;
 }
 
@@ -301,6 +344,7 @@ function hotkeys() {
       ${hk("hotkeys.bar2", t("Second bar"))}
       ${hk("hotkeys.bar3", t("Third bar"))}
       ${hk("hotkeys.toggleDock", t("Hide or show the dock"))}
+      ${hk("hotkeys.toggleCat", t("Hide or show the cat"))}
     </div>`;
 }
 
@@ -343,7 +387,7 @@ function updates() {
 
 function render() {
   const scroll = document.querySelector(".content")?.scrollTop ?? 0;
-  const body = { general, look, motion, bars, hotkeys, updates }[section]();
+  const body = { general, look, motion, cat, bars, hotkeys, updates }[section]();
   app.innerHTML = `<nav class="side">
       <div class="brand"><span class="logo"></span><div><b>Dynamic Dock</b><small>${t("Settings")}</small></div></div>
       ${SECTIONS.map(([id, ic, label]) => `<button class="nav ${id === section ? "is-on" : ""}" data-section="${id}">${icon(ic)}<span>${t(label)}</span></button>`).join("")}
@@ -467,6 +511,10 @@ app.addEventListener("click", async (e) => {
       // ignore
     }
     return render();
+  }
+  if ("catMeow" in d) {
+    const { meow } = await import("../dock/cat-sound.js");
+    return meow("meow", config.cat.volume);
   }
   if (d.theme) {
     config.look.theme = d.theme;
@@ -642,7 +690,7 @@ app.addEventListener("change", async (e) => {
   if (!el.dataset.path) return;
   if (el.type === "checkbox") {
     setByPath(el.dataset.path, el.checked);
-    return changed({ rerender: el.dataset.path.startsWith("@") });
+    return changed({ rerender: el.dataset.path.startsWith("@") || el.dataset.path === "cat.enabled" });
   }
   if (el.tagName === "SELECT") {
     setByPath(el.dataset.path, el.value);

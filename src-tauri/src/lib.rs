@@ -258,6 +258,7 @@ fn apply_hotkeys(app: &AppHandle) {
         (&wanted.bar2, "bar2"),
         (&wanted.bar3, "bar3"),
         (&wanted.toggle_dock, "toggleDock"),
+        (&wanted.toggle_cat, "toggleCat"),
     ] {
         if accel.trim().is_empty() {
             continue;
