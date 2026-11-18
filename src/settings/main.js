@@ -234,7 +234,7 @@ function pinnedEditor(item) {
       ${pins.length ? "" : `<p class="row-hint">${t("Nothing pinned yet. Add apps here, or right-click a running app on the dock and choose “Pin to the dock”.")}</p>`}
       ${pins
         .map(
-          (p, i) => `<div class="list-row" data-pin="${i}"><span>${escapeHtml(p.name || baseName(p.path || p.id))}</span><small>${escapeHtml(p.path || p.id)}</small>
+          (p, i) => `<div class="list-row" data-pin="${i}"><span>${escapeHtml(p.name || baseName(p.path || p.id))}</span><small>${escapeHtml(p.kind === "folder" ? `${t("Folder")} · ${p.apps.map((a) => a.name).join(", ")}` : p.path || p.id)}</small>
           <button class="icon-btn" data-pin-move="-1" ${i === 0 ? "disabled" : ""}>${icon("up")}</button>
           <button class="icon-btn" data-pin-move="1" ${i === pins.length - 1 ? "disabled" : ""}>${icon("down")}</button>
           <button class="icon-btn" data-pin-del>${icon("close")}</button></div>`

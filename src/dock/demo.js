@@ -25,7 +25,19 @@ const w = (hwnd, exe, title, extra = {}) => ({
 
 let cpu = 18;
 
+/** A made-up window picture for the preview list; each window its own shape. */
+function preview(w) {
+  const shapes = [[16, 10], [4, 3], [21, 9], [3, 4]];
+  const [aw, ah] = shapes[w.hwnd % shapes.length];
+  const W = 320;
+  const H = Math.round((W * ah) / aw);
+  const color = COLORS[w.hwnd % COLORS.length];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#1e1f26"/><rect width="${W}" height="22" fill="${color}"/><rect x="14" y="36" width="${W * 0.55}" height="10" rx="5" fill="#ffffff30"/><rect x="14" y="56" width="${W * 0.8}" height="8" rx="4" fill="#ffffff18"/><rect x="14" y="72" width="${W * 0.7}" height="8" rx="4" fill="#ffffff18"/><rect x="14" y="${H - 50}" width="${W - 28}" height="36" rx="6" fill="${color}40"/></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
 export const demo = {
+  preview,
   tasks: [
     w(1, "Firefox", "Dynamic Dock — GitHub — Mozilla Firefox", { active: true }),
     w(2, "Firefox", "Rust documentation — Mozilla Firefox"),
@@ -34,6 +46,7 @@ export const demo = {
     w(5, "Discord", "#general | Discord"),
     w(6, "Explorer", "Downloads", { minimized: true }),
   ],
+  badges: { "c:\\program files\\discord.exe": "3", "c:\\program files\\spotify.exe": "•" },
   media: {
     hasSession: true,
     playing: true,

@@ -25,6 +25,7 @@ export const CATALOG = {
       showPinned: { type: "bool", label: "Show pinned apps", default: true },
       showRunning: { type: "bool", label: "Show running apps", default: true },
       group: { type: "bool", label: "Group windows of the same app", default: true },
+      badges: { type: "bool", label: "Show notification counts", default: true },
       labels: { type: "bool", label: "Show window titles", default: false },
       labelWidth: { type: "number", label: "Title width", default: 140, min: 60, max: 320, step: 10, unit: "px" },
       multiClick: {
@@ -33,6 +34,7 @@ export const CATALOG = {
         default: "list",
         choices: { list: "Show its windows", cycle: "Switch between them", last: "Bring the last one" },
       },
+      previews: { type: "bool", label: "Show window previews in the list", default: true },
       pinned: { type: "list", label: "Pinned apps", default: [] },
     },
   },

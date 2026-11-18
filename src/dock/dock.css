@@ -166,6 +166,20 @@ body.is-demo {
   gap: var(--margin);
 }
 
+/* The zone with the open programs may shrink (its icons then scroll); the
+   others keep their size. */
+.bar[data-flex="left"] {
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+}
+
+.bar[data-flex="center"] {
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+}
+
+.bar[data-flex="right"] {
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(0, 1fr);
+}
+
 /* One pill in the middle, or edge to edge. */
 :root[data-style="floating"] .bar,
 :root[data-style="full"] .bar {
@@ -239,6 +253,31 @@ body.is-demo {
   grid-template-columns: 1fr auto 1fr;
 }
 
+.bar[data-flex="left"] .pill.is-full {
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+}
+
+.bar[data-flex="center"] .pill.is-full {
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+}
+
+.bar[data-flex="right"] .pill.is-full {
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(0, 1fr);
+}
+
+/* The single floating pill: only the zone with the programs shrinks. */
+:root[data-style="floating"] .pill {
+  max-width: 100%;
+}
+
+:root[data-style="floating"] .zone {
+  flex: none;
+}
+
+:root[data-style="floating"] .zone.has-apps {
+  flex: 0 1 auto;
+}
+
 :root[data-style="full"] .bar {
   padding: 0;
 }
@@ -282,6 +321,58 @@ body.is-demo {
   align-items: center;
   height: 100%;
   flex: none;
+}
+
+/* Too many programs for the room: the list is cut at the zone's edge (but
+   magnified icons still rise above it) and scrolls with the wheel or the
+   arrows. */
+.it-apps {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.it-apps > .cell {
+  translate: var(--apps-x, 0px) 0;
+}
+
+.apps-more {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 18px;
+  height: calc(var(--item-h) - 8px);
+  margin-top: calc((var(--item-h) - 8px) / -2);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--hover) 60%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.apps-more:hover {
+  background: var(--hover);
+}
+
+.apps-more .ic {
+  width: 12px;
+  height: 12px;
+}
+
+.apps-more-l {
+  left: 0;
+}
+
+.apps-more-r {
+  right: 0;
+}
+
+.it-apps.can-left .apps-more-l,
+.it-apps.can-right .apps-more-r {
+  display: flex;
 }
 
 .it[hidden] {
@@ -432,6 +523,38 @@ body.is-demo {
 
 :root[data-position="top"] .cell-icon {
   transform-origin: 50% 0%;
+}
+
+/* Notification count, top right of the icon, like the taskbar's. */
+.cell-badge {
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font: 700 10px/1 var(--num, inherit);
+  color: #fff;
+  background: #e5484d;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #000 35%, transparent);
+  pointer-events: none;
+}
+
+.cell-badge[hidden] {
+  display: none;
+}
+
+.cell-badge.is-dot {
+  top: -1px;
+  right: -1px;
+  min-width: 10px;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  font-size: 0;
 }
 
 .is-magnifying .cell-icon {
@@ -883,6 +1006,16 @@ body.is-demo {
   fill: currentColor;
 }
 
+/* Icons wrapped in a span: as flex boxes, so the icon is centred instead
+   of sitting on the text baseline (which put it a little high). */
+.vol-ic,
+.chip-ic,
+.w-ic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .volume .vol-pct:empty {
   display: none;
 }
@@ -1008,51 +1141,51 @@ body.is-demo {
   display: none;
 }
 
-.batt-body {
-  position: relative;
-  width: 24px;
-  height: 12px;
-  border: 1.5px solid currentColor;
-  border-radius: 3.5px;
-  padding: 1.5px;
-  display: flex;
-}
-
-.batt-body::after {
-  content: "";
-  position: absolute;
-  right: -4px;
-  top: 3px;
-  width: 2px;
-  height: 4px;
-  border-radius: 0 1px 1px 0;
-  background: currentColor;
-}
-
-.batt-body i {
+/* Battery: an outline with a cap, filled to the charge. Green while
+   charging (with a bolt cut into it), red when low. */
+.batt-svg {
   display: block;
-  height: 100%;
-  border-radius: 1.5px;
-  background: currentColor;
+  width: 26px;
+  height: 13px;
+  overflow: visible;
+}
+
+.batt-svg .b-shell {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  opacity: 0.75;
+}
+
+.batt-svg .b-cap {
+  fill: currentColor;
+  opacity: 0.75;
+}
+
+.batt-svg .b-fill {
+  fill: currentColor;
+  transition: width var(--t-slow) var(--ease);
+}
+
+.batt-svg .b-bolt {
+  fill: currentColor;
+}
+
+.batt.is-mid .b-fill {
+  fill: #f5b041;
 }
 
 .batt.is-low {
   color: #ff5f57;
 }
 
-.batt.is-charging .batt-body i {
-  background: #2ecc71;
+.batt.is-charging .b-fill {
+  fill: #3fb950;
 }
 
-.batt-body .ic {
-  position: absolute;
-  inset: -1px 0 0 0;
-  margin: auto;
-  width: 10px;
-  height: 10px;
-  fill: var(--fg);
-  stroke: var(--pop);
-  stroke-width: 1;
+.batt-pct {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
 }
 
 .recycle .dot {
@@ -1681,6 +1814,219 @@ body.is-demo {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* folders */
+.cell-icon.is-folder {
+  border-radius: 24%;
+  background: color-mix(in srgb, var(--fg) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.fold {
+  width: 100%;
+  height: 100%;
+  padding: 14%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10%;
+}
+
+.fold img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cell.is-drop-target .cell-icon {
+  transform: scale(1.18);
+  border-radius: 24%;
+  box-shadow: 0 0 0 2px var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.folder-pop {
+  padding: 14px;
+}
+
+.folder-name {
+  display: block;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  font: 600 15px var(--font);
+  text-align: center;
+  outline: none;
+}
+
+.folder-name:hover,
+.folder-name:focus {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+}
+
+.folder-app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px 8px;
+  border-radius: 10px;
+}
+
+.folder-app:hover {
+  background: var(--hover);
+}
+
+.folder-ic {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+
+.folder-ic img {
+  width: 40px;
+  height: 40px;
+}
+
+.folder-label {
+  max-width: 100%;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-dot {
+  position: absolute;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0;
+}
+
+.folder-app.is-running .folder-dot {
+  opacity: 1;
+}
+
+.folder-hint {
+  margin: 10px 2px 0;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* window previews */
+.winlist.is-previews {
+  padding: 10px;
+}
+
+.wcards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.wcard {
+  width: var(--w, 200px);
+  padding: 6px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: width var(--t-med) var(--ease), background var(--t-fast), opacity var(--t-med), transform var(--t-med);
+}
+
+.wcard:hover {
+  background: var(--hover);
+}
+
+.wcard.is-active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.wcard.is-closing {
+  opacity: 0;
+  transform: scale(0.94);
+}
+
+.wcard-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 22px;
+}
+
+.wcard-ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.wcard-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wcard-x {
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+
+.wcard:hover .wcard-x {
+  opacity: 1;
+}
+
+.wcard-shot {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.wcard-shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.wcard-empty {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.wcard.has-shot .wcard-empty {
+  display: none;
+}
+
+.wcard.is-min .wcard-title {
+  color: var(--muted);
 }
 
 /* pin an app */
