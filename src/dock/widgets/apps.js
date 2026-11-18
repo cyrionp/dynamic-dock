@@ -70,6 +70,10 @@ export function arrange(natural, order) {
 
 const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
+/** A folder of pinned apps, like on a phone's home screen. */
+const isFolder = (pin) => pin?.kind === "folder";
+const newFolder = (apps, name) => ({ kind: "folder", id: `folder-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, apps });
+
 /** What pinning a running window stores. */
 function pinFromWindow(w) {
   const aumid = w.appId && !w.appId.includes("\\") ? w.appId : null;
@@ -121,6 +125,13 @@ export const apps = {
       const out = [];
       if (o.showPinned) {
         for (const pin of o.pinned) {
+          if (isFolder(pin)) {
+            // The windows of every app inside count for the folder.
+            const wins = windows.filter((w) => !used.has(w.hwnd) && pin.apps.some((a) => matches(a, w)));
+            wins.forEach((w) => used.add(w.hwnd));
+            out.push({ key: `f:${pin.id}`, pin, folder: true, wins });
+            continue;
+          }
           const wins = windows.filter((w) => !used.has(w.hwnd) && matches(pin, w));
           wins.forEach((w) => used.add(w.hwnd));
           out.push({ key: `p:${lower(pin.id)}`, pin, wins });
@@ -182,11 +193,15 @@ export const apps = {
           c.dataset.mag = "";
           c.dataset.key = e.key;
           c.innerHTML = cellHtml(e);
-          const iconKey = e.pin ? iconKeyOf(e.pin) : e.wins[0]?.icon;
-          paintIcon(c.querySelector("img"), iconKey, icon("window", "cell-fallback"));
+          if (!e.folder) {
+            const iconKey = e.pin ? iconKeyOf(e.pin) : e.wins[0]?.icon;
+            paintIcon(c.querySelector("img"), iconKey, icon("window", "cell-fallback"));
+          }
           cells.set(e.key, c);
           requestAnimationFrame(() => requestAnimationFrame(() => c.classList.remove("is-new")));
         }
+        if (e.folder) paintFolderIcon(c, e.pin);
+        c.classList.toggle("is-folder", Boolean(e.folder));
         const running = e.wins.length > 0;
         const active = e.wins.some((w) => w.active);
         c.classList.toggle("is-running", running);
@@ -201,8 +216,12 @@ export const apps = {
         if (b.textContent !== badge) b.textContent = badge;
         b.hidden = !badge;
         b.classList.toggle("is-dot", badge === "•");
-        const label = e.wins.length === 1 ? e.wins[0].title : e.pin?.name || (e.wins[0] ? nameOf(e.wins[0]) : "");
-        c._tip = e.wins.length > 1 ? `${e.pin?.name || nameOf(e.wins[0])} · ${t("{n} windows", { n: e.wins.length })}` : label || e.pin?.name;
+        const label = e.folder ? e.pin.name : e.wins.length === 1 ? e.wins[0].title : e.pin?.name || (e.wins[0] ? nameOf(e.wins[0]) : "");
+        c._tip = e.folder
+          ? `${e.pin.name} · ${t("{n} apps", { n: e.pin.apps.length })}`
+          : e.wins.length > 1
+            ? `${e.pin?.name || nameOf(e.wins[0])} · ${t("{n} windows", { n: e.wins.length })}`
+            : label || e.pin?.name;
         const lab = c.querySelector(".cell-label");
         lab.textContent = item.opts.labels ? label : "";
         c.classList.toggle("has-label", Boolean(item.opts.labels && label));
@@ -240,7 +259,9 @@ export const apps = {
       if (!cs.length) return 0;
       const last = cs[cs.length - 1];
       const width = last.offsetLeft + last.offsetWidth - cs[0].offsetLeft;
-      return Math.max(0, Math.ceil(width - el.clientWidth));
+      // A few pixels are rounding or a magnified icon mid-animation.
+      const extra = Math.ceil(width - el.clientWidth);
+      return extra > 4 ? extra : 0;
     }
     function scrollBy(dx) {
       const max = overflow();
@@ -280,6 +301,17 @@ export const apps = {
 
     let badgeMap = {};
     function badgeOf(e) {
+      if (e.folder) {
+        // A folder adds up its apps' counts (or shows a dot).
+        let sum = 0;
+        let dot = false;
+        for (const a of e.pin.apps) {
+          const v = badgeOf({ pin: a, wins: windows.filter((w) => matches(a, w)) });
+          if (/^\d+$/.test(v)) sum += Number(v);
+          else if (v) dot = v === "•" ? true : (sum += 100);
+        }
+        return sum > 99 ? "99+" : sum ? String(sum) : dot ? "•" : "";
+      }
       const ids = [e.pin?.id, ...e.wins.map((w) => w.appId)];
       for (const id of ids) {
         const v = id && badgeMap[lower(id)];
@@ -445,6 +477,7 @@ export const apps = {
       const e = entryOf(c);
       if (!e) return;
       ctx.hideTip();
+      if (e.folder) return openFolder(c, e);
       if (!e.wins.length) return launch(e, c);
       if (ev.shiftKey) return launch(e, c);
       if (e.wins.length === 1) return act(e.wins[0]);
@@ -466,6 +499,7 @@ export const apps = {
     function menu(c) {
       const e = entryOf(c);
       if (!e) return;
+      if (e.folder) return folderMenu(c, e);
       const name = e.pin?.name || nameOf(e.wins[0]);
       const items = [{ header: name }];
       for (const w of e.wins.slice(0, 8)) {
@@ -479,6 +513,10 @@ export const apps = {
       } else if (e.wins[0]) {
         items.push({ label: t("Pin to the dock"), icon: "pin", action: () => pinInPlace(e) });
       }
+      for (const f of item.opts.pinned.filter(isFolder)) {
+        items.push({ label: t("Move to “{name}”", { name: f.name }), icon: "layers", action: () => mergeInto(e, entryByKey(`f:${f.id}`)) });
+      }
+      items.push({ label: t("New folder"), icon: "layers", action: () => folderFrom(e) });
       items.push({ label: t("Pin an app…"), icon: "plus", action: () => pickApp(c) });
       if (e.wins.length === 1) {
         const w = e.wins[0];
@@ -500,6 +538,177 @@ export const apps = {
 
     function setPinned(pinned) {
       ctx.saveItemOpts({ pinned });
+    }
+
+    /* ---------- folders ---------- */
+
+    const entryByKey = (key) => entries.find((x) => x.key === key);
+    const pinOf = (e) => e.pin ?? pinFromWindow(e.wins[0]);
+
+    /** The folder's icon: its first four apps, small, on a tile. */
+    function paintFolderIcon(c, folder) {
+      const sig = folder.apps.slice(0, 4).map(iconKeyOf).join("|");
+      if (c._sig === sig) return;
+      c._sig = sig;
+      const box = c.querySelector(".cell-icon");
+      box.classList.add("is-folder");
+      box.querySelector("img")?.remove();
+      box.querySelector(".fold")?.remove();
+      const grid = document.createElement("span");
+      grid.className = "fold";
+      for (const a of folder.apps.slice(0, 4)) {
+        const img = document.createElement("img");
+        img.alt = "";
+        img.hidden = true;
+        img.draggable = false;
+        grid.append(img);
+        paintIcon(img, iconKeyOf(a), "");
+      }
+      box.prepend(grid);
+    }
+
+    /** Puts the app of entry `e` into the folder entry `f` (or, when `f` is an
+     * app, makes a folder of the two where `f` was). */
+    function mergeInto(e, f) {
+      if (!e || !f || e === f || e.folder) return;
+      const app = pinOf(e);
+      const pins = item.opts.pinned.filter((p) => p !== e.pin);
+      const keys = entries.map((x) => x.key).filter((k) => k !== e.key);
+      if (f.folder) {
+        const folder = { ...f.pin, apps: f.pin.apps.some((a) => samePin(a, app)) ? f.pin.apps : [...f.pin.apps, app] };
+        setOrder(keys);
+        return setPinned(pins.map((p) => (p === f.pin ? folder : p)));
+      }
+      const folder = newFolder([pinOf(f), app], t("Folder"));
+      const at = pins.indexOf(f.pin);
+      if (at >= 0) pins[at] = folder;
+      else pins.splice(entries.slice(0, entries.indexOf(f)).filter((x) => x.pin && x !== e).length, 0, folder);
+      setOrder(keys.map((k) => (k === f.key ? `f:${folder.id}` : k)));
+      setPinned(pins);
+    }
+
+    /** A new folder holding just this app, where the app was. */
+    function folderFrom(e) {
+      const folder = newFolder([pinOf(e)], t("Folder"));
+      const pins = item.opts.pinned.slice();
+      const at = pins.indexOf(e.pin);
+      if (at >= 0) pins[at] = folder;
+      else pins.splice(entries.slice(0, entries.indexOf(e)).filter((x) => x.pin).length, 0, folder);
+      setOrder(entries.map((x) => (x === e ? `f:${folder.id}` : x.key)));
+      setPinned(pins);
+    }
+
+    /** Saves a changed folder; an empty one goes away. */
+    function saveFolder(folder, changed) {
+      const pins = item.opts.pinned.flatMap((p) => (p !== folder ? [p] : changed.apps.length ? [changed] : []));
+      setPinned(pins);
+    }
+
+    /** Takes the folder apart: its apps go back on the dock, in its place. */
+    function ungroup(e) {
+      const pins = item.opts.pinned.flatMap((p) => (p === e.pin ? e.pin.apps : [p]));
+      const keys = entries.flatMap((x) => (x.key === e.key ? e.pin.apps.map((a) => `p:${lower(a.id)}`) : [x.key]));
+      setOrder(keys);
+      setPinned(pins);
+    }
+
+    /** Takes one app out of the folder (renamed to `name`) and pins it right
+     * after the folder. */
+    function takeOut(e, app, name) {
+      const rest = e.pin.apps.filter((a) => a !== app);
+      const pins = item.opts.pinned.flatMap((p) => (p === e.pin ? (rest.length ? [{ ...p, name, apps: rest }, app] : [app]) : [p]));
+      const keys = entries.flatMap((x) => (x.key === e.key ? (rest.length ? [x.key, `p:${lower(app.id)}`] : [`p:${lower(app.id)}`]) : [x.key]));
+      setOrder(keys);
+      setPinned(pins);
+    }
+
+    function folderMenu(c, e) {
+      ctx.openMenu(c, [
+        { header: e.pin.name },
+        { label: t("Open"), icon: "layers", action: () => openFolder(c, e) },
+        { label: t("Rename…"), icon: "edit", action: () => openFolder(c, e, true) },
+        "-",
+        { label: t("Ungroup"), icon: "apps", action: () => ungroup(e) },
+        { label: t("Remove from the dock"), icon: "unpin", danger: true, action: () => saveFolder(e.pin, { ...e.pin, apps: [] }) },
+      ]);
+    }
+
+    /** The folder opened: a grid of its apps, and its name to edit. */
+    function openFolder(c, e, rename = false) {
+      const folder = e.pin;
+      ctx.openPopup(c, {
+        width: Math.min(4, Math.max(3, folder.apps.length)) * 84 + 34,
+        className: "folder-pop",
+        focus: true,
+        kind: "folder",
+        build(body, close) {
+          body.innerHTML = `<input class="folder-name" value="${escapeHtml(folder.name)}" spellcheck="false" />
+            <div class="folder-grid">${folder.apps
+              .map((a, i) => {
+                const wins = windows.filter((w) => matches(a, w));
+                const badge = item.opts.badges ? badgeOf({ pin: a, wins }) : "";
+                return `<button class="folder-app ${wins.length ? "is-running" : ""}" data-i="${i}">
+                  <span class="folder-ic"><img alt="" hidden draggable="false" />${badge ? `<b class="cell-badge ${badge === "•" ? "is-dot" : ""}">${escapeHtml(badge === "•" ? "" : badge)}</b>` : ""}</span>
+                  <span class="folder-label">${escapeHtml(a.name || baseName(a.path || a.id))}</span>
+                  <i class="folder-dot"></i>
+                </button>`;
+              })
+              .join("")}</div>
+            <p class="folder-hint">${t("Drag an app onto another on the dock to make a folder, or onto this folder to add it.")}</p>`;
+          body.querySelectorAll(".folder-app").forEach((b) => paintIcon(b.querySelector("img"), iconKeyOf(folder.apps[Number(b.dataset.i)]), icon("window")));
+          const input = body.querySelector(".folder-name");
+          if (rename) setTimeout(() => (input.focus(), input.select()), 60);
+          input.addEventListener("keydown", (ev) => {
+            if (ev.key === "Enter" || ev.key === "Escape") close();
+          });
+          let leave = null; // an app taken out, saved on close
+          body.addEventListener("click", (ev) => {
+            const b = ev.target.closest(".folder-app");
+            if (!b) return;
+            const a = folder.apps[Number(b.dataset.i)];
+            const wins = windows.filter((w) => matches(a, w));
+            close();
+            if (!wins.length) {
+              bounce(c, e.key);
+              launchPin(a).catch(() => {});
+            } else if (wins.length === 1) act(wins[0]);
+            else act(wins.find((w) => w.active) ?? wins[wins.length - 1], "focus");
+          });
+          body.addEventListener("contextmenu", (ev) => {
+            const b = ev.target.closest(".folder-app");
+            if (!b) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            leave = folder.apps[Number(b.dataset.i)];
+            close();
+          });
+          // Renaming (and taking an app out) saves the folder, which rebuilds
+          // the bar and closes pop-ups, so it happens once, on close.
+          return () => {
+            const name = input.value.trim() || t("Folder");
+            if (leave) setTimeout(() => takeOutMenu(c, e, leave, name), 0);
+            else if (name !== folder.name) setTimeout(() => saveFolder(folder, { ...folder, name }), 0);
+          };
+        },
+      });
+    }
+
+    /** Right-click on an app inside a folder (whose name may have just been
+     * edited to `name`). */
+    function takeOutMenu(c, e, app, name) {
+      ctx.openMenu(c, [
+        { header: app.name || baseName(app.path || app.id) },
+        { label: t("Open"), icon: "rocket", action: () => launchPin(app).catch(() => {}) },
+        { label: t("Run as administrator"), icon: "shield", action: () => launchPin(app, true).catch(() => {}) },
+        "-",
+        { label: t("Take out of the folder"), icon: "up", action: () => takeOut(e, app, name) },
+        {
+          label: t("Unpin from the dock"),
+          icon: "unpin",
+          danger: true,
+          action: () => saveFolder(e.pin, { ...e.pin, name, apps: e.pin.apps.filter((a) => a !== app) }),
+        },
+      ]);
     }
 
     /** Right-click on the apps area itself, not on an icon. */
@@ -610,15 +819,49 @@ export const apps = {
         ctx.hideTip();
       }
       drag.c.style.transform = `translateX(${dx}px)`;
+      // Held over the middle of another icon: dropping makes a folder (or
+      // puts it into that folder), as on a phone.
+      // It arms after a short hold, so passing over icons only reorders.
+      const over = folderTargetAt(ev.clientX, drag.c);
+      if (over !== drag.over) {
+        clearTimeout(drag.armTimer);
+        drag.over?.classList.remove("is-drop-target");
+        drag.over = over;
+        drag.armed = false;
+        if (over) {
+          const d = drag;
+          d.armTimer = setTimeout(() => {
+            if (drag !== d || d.over !== over) return;
+            d.armed = true;
+            over.classList.add("is-drop-target");
+          }, 350);
+        }
+      }
     });
+
+    /** The icon whose middle is under `x`, if the dragged one can go into it. */
+    function folderTargetAt(x, dragged) {
+      if (entryOf(dragged)?.folder) return null;
+      for (const cell of el.querySelectorAll(".cell:not(.is-leaving)")) {
+        if (cell === dragged) continue;
+        const r = cell.getBoundingClientRect();
+        if (x > r.left + r.width * 0.25 && x < r.right - r.width * 0.25) return cell;
+      }
+      return null;
+    }
     const endDrag = (ev) => {
       if (!drag) return;
-      const { c, moved } = drag;
+      const { c, moved, over, armed, armTimer } = drag;
+      clearTimeout(armTimer);
       drag = null;
       if (!moved) return;
       c.classList.remove("is-dragging");
       c.style.transform = "";
       ctx.setMagnifyPaused(false);
+      over?.classList.remove("is-drop-target");
+      c._dragged = true;
+      setTimeout(() => (c._dragged = false), 50);
+      if (over && armed && ev.type === "pointerup") return mergeInto(entryOf(c), entryOf(over));
       // Where it was dropped, among all cells.
       const others = [...el.querySelectorAll(".cell:not(.is-leaving)")].filter((x) => x !== c);
       let index = others.findIndex((x) => {
@@ -636,8 +879,6 @@ export const apps = {
       const pins = [...shownPins, ...rest];
       if (sameList(pins, item.opts.pinned)) paint();
       else setPinned(pins);
-      c._dragged = true;
-      setTimeout(() => (c._dragged = false), 50);
     };
     el.addEventListener("pointerup", endDrag);
     el.addEventListener("pointercancel", endDrag);

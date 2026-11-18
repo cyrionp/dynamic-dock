@@ -1816,6 +1816,122 @@ body.is-demo {
   text-overflow: ellipsis;
 }
 
+/* folders */
+.cell-icon.is-folder {
+  border-radius: 24%;
+  background: color-mix(in srgb, var(--fg) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.fold {
+  width: 100%;
+  height: 100%;
+  padding: 14%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 10%;
+}
+
+.fold img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cell.is-drop-target .cell-icon {
+  transform: scale(1.18);
+  border-radius: 24%;
+  box-shadow: 0 0 0 2px var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.folder-pop {
+  padding: 14px;
+}
+
+.folder-name {
+  display: block;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  font: 600 15px var(--font);
+  text-align: center;
+  outline: none;
+}
+
+.folder-name:hover,
+.folder-name:focus {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+}
+
+.folder-app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px 8px;
+  border-radius: 10px;
+}
+
+.folder-app:hover {
+  background: var(--hover);
+}
+
+.folder-ic {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+
+.folder-ic img {
+  width: 40px;
+  height: 40px;
+}
+
+.folder-label {
+  max-width: 100%;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-dot {
+  position: absolute;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0;
+}
+
+.folder-app.is-running .folder-dot {
+  opacity: 1;
+}
+
+.folder-hint {
+  margin: 10px 2px 0;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
 /* window previews */
 .winlist.is-previews {
   padding: 10px;
