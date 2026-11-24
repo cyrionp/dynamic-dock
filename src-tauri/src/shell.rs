@@ -211,6 +211,8 @@ mod imp {
         for hwnd in bars {
             appbar_send_remove(HWND(hwnd as _));
         }
+        // The FPS counter's trace session would outlive the process.
+        crate::fps::shutdown();
         crate::taskband::restore();
         restore_now();
     }
@@ -323,6 +325,7 @@ mod imp {
         if read_journal().is_some() {
             log!("watchdog: the dock (pid {pid}) ended without restoring the taskbar");
         }
+        crate::fps::shutdown();
         crate::taskband::restore();
         restore_now();
     }

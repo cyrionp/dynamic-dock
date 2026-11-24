@@ -144,6 +144,12 @@ export const CATALOG = {
     blurb: "Charge, hidden on desktops",
     options: { percent: { type: "bool", label: "Show the percentage", default: true } },
   },
+  fps: {
+    label: "FPS counter",
+    icon: "gauge",
+    group: "system",
+    blurb: "Frames per second, also over a game",
+  },
   recycle: { label: "Recycle Bin", icon: "trash", group: "system", blurb: "Open or empty it" },
   power: { label: "Power", icon: "power", group: "system", blurb: "Lock, sleep, restart, shut down" },
   stopwatch: { label: "Stopwatch", icon: "stopwatch", group: "productivity", blurb: "As many as you like" },
@@ -220,7 +226,7 @@ function defaultBars() {
       name: "System",
       items: {
         left: [makeItem("explorer"), makeItem("settingsWin"), makeItem("snip"), makeItem("clipboard")],
-        center: [makeItem("stats", { disk: true }), makeItem("network")],
+        center: [makeItem("stats", { disk: true }), makeItem("network"), makeItem("fps")],
         right: [makeItem("recycle"), makeItem("power"), makeItem("dockSettings"), makeItem("clock")],
       },
     },
@@ -250,6 +256,8 @@ export function defaults() {
       bar3: "Ctrl+Alt+3",
       toggleDock: "Ctrl+Alt+D",
       toggleCat: "Ctrl+Alt+K",
+      toggleFps: "Ctrl+Alt+F",
+      toggleFpsOverlay: "Ctrl+Alt+O",
     },
     look: {
       theme: "midnight",

@@ -30,6 +30,18 @@ JavaScript and CSS, so the whole app stays small and light on RAM and CPU.
   player, volume with output device switcher, CPU/RAM/disk stats, network,
   battery, recycle bin, power menu, stopwatch, countdown timers, notes, to-do,
   dock settings, bar switcher, separator and spacer.
+- **FPS counter.** Start and stop it from its widget (or `Ctrl+Alt+F`); it
+  updates once a second and goes back to zero when stopped. **Show on the
+  screen** (or `Ctrl+Alt+O`) puts a small counter over a running game: drag
+  it anywhere with **Move**, clicks pass through it, and it can be hidden at
+  any time. Nothing is injected into the game: frames are counted from
+  Windows' own present events (ETW, as PresentMon and the Xbox Game Bar do),
+  so anti-cheat has nothing to see. Counting each game's frames needs an
+  administrator or the *Performance Log Users* group (the widget asks
+  once; sign out and in afterwards); without it the counter shows the
+  screen's frame rate. The counter shows over games in a window or
+  borderless full screen; exclusive full screen hides every other window,
+  so switch such games to borderless.
 - **A dock cat.** A small cat lives on top of the dock: it walks from island
   to island, naps, follows the pointer with its eyes, purrs when you rest the
   pointer on it, chases a darting pointer, does tricks when clicked and can be

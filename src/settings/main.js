@@ -345,6 +345,8 @@ function hotkeys() {
       ${hk("hotkeys.bar3", t("Third bar"))}
       ${hk("hotkeys.toggleDock", t("Hide or show the dock"))}
       ${hk("hotkeys.toggleCat", t("Hide or show the cat"))}
+      ${hk("hotkeys.toggleFps", t("Start or stop the FPS counter"))}
+      ${hk("hotkeys.toggleFpsOverlay", t("Show or hide the FPS counter on the screen"))}
     </div>`;
 }
 

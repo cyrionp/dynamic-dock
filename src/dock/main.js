@@ -78,6 +78,7 @@ function itemContext(item) {
   return {
     motion: config.motion,
     bars: config.bars,
+    hotkeys: config.hotkeys,
     barIndex,
     openPopup,
     openMenu,
