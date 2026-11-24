@@ -2406,3 +2406,102 @@ body.is-demo {
   gap: 8px;
   margin-top: 10px;
 }
+
+/* ---------- FPS counter ---------- */
+
+.chip.fps.is-live[data-grade="is-good"] .chip-t,
+.fps-big.is-good {
+  color: #4ade80;
+}
+
+.chip.fps.is-live[data-grade="is-ok"] .chip-t,
+.fps-big.is-ok {
+  color: #fbbf24;
+}
+
+.chip.fps.is-live[data-grade="is-low"] .chip-t,
+.fps-big.is-low {
+  color: #f87171;
+}
+
+.fps-big {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  margin: 4px 0 2px;
+  transition: color var(--t-med);
+}
+
+.fps-big b {
+  font: 700 44px/1 var(--num);
+  font-variant-numeric: tabular-nums;
+}
+
+.fps-big small {
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.fps-src {
+  text-align: center;
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fps-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.fps-actions .btn-primary,
+.fps-actions .chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fps-actions .chip-btn {
+  height: 32px;
+  border-radius: 8px;
+}
+
+.fps-actions .ic {
+  width: 14px;
+  height: 14px;
+}
+
+.fps-actions .btn-primary .ic {
+  fill: currentColor;
+}
+
+.fps-actions .chip-btn.is-on {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: color-mix(in srgb, var(--accent) 70%, var(--fg));
+}
+
+.fps-note {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+
+.fps-note .chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.fps-note .ic {
+  width: 14px;
+  height: 14px;
+}

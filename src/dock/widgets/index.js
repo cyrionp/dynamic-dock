@@ -6,6 +6,7 @@ import { clock, weather } from "./clock.js";
 import { media, volume } from "./media.js";
 import { stats, network, battery, recycle, power, tray } from "./system.js";
 import { stopwatch, countdown, notesWidget, todo } from "./productivity.js";
+import { fps } from "./fps.js";
 
 export const WIDGETS = {
   apps,
@@ -36,6 +37,7 @@ export const WIDGETS = {
   battery,
   recycle,
   power,
+  fps,
   stopwatch,
   countdown,
   notes: notesWidget,

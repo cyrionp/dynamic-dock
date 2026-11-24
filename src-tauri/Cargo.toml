@@ -46,6 +46,9 @@ windows = { version = "0.62", features = [
   "Win32_Storage_Packaging_Appx",
   "Win32_Storage_Xps",
   "Win32_System_Diagnostics_ToolHelp",
+  # FPS counter: frame-present events (ETW).
+  "Win32_System_Diagnostics_Etw",
+  "Win32_System_Time",
   "Win32_System_LibraryLoader",
   "Win32_System_Power",
   "Win32_System_ProcessStatus",

@@ -9,6 +9,7 @@ mod apps;
 mod badges;
 mod audio;
 mod config;
+mod fps;
 mod icons;
 mod log;
 mod media;
@@ -259,6 +260,8 @@ fn apply_hotkeys(app: &AppHandle) {
         (&wanted.bar3, "bar3"),
         (&wanted.toggle_dock, "toggleDock"),
         (&wanted.toggle_cat, "toggleCat"),
+        (&wanted.toggle_fps, "toggleFps"),
+        (&wanted.toggle_fps_overlay, "toggleFpsOverlay"),
     ] {
         if accel.trim().is_empty() {
             continue;
@@ -408,6 +411,31 @@ async fn volume_get() -> Result<volume::Volume, String> {
 #[tauri::command]
 async fn volume_change(level: Option<f32>, delta: Option<f32>, mute: Option<bool>) -> Result<volume::Volume, String> {
     volume::change(level, delta, mute)
+}
+
+#[tauri::command]
+fn fps_state() -> fps::FpsState {
+    fps::snapshot()
+}
+
+#[tauri::command]
+fn fps_set_running(on: bool) {
+    fps::set_running(on);
+}
+
+#[tauri::command]
+fn fps_set_overlay(on: bool) {
+    fps::set_overlay(on);
+}
+
+#[tauri::command]
+fn fps_set_moving(on: bool) {
+    fps::set_moving(on);
+}
+
+#[tauri::command]
+async fn fps_enable_game_capture() -> Result<(), String> {
+    fps::enable_game_capture()
 }
 
 #[tauri::command]
@@ -571,6 +599,13 @@ pub fn run() {
                         .lock()
                         .ok()
                         .and_then(|h| h.iter().find(|(id, _)| *id == shortcut.id()).map(|(_, a)| *a));
+                    // The FPS counter is run from Rust, so its hotkeys work
+                    // even while the dock steps aside for a full-screen game.
+                    match action {
+                        Some("toggleFps") => return fps::toggle(),
+                        Some("toggleFpsOverlay") => return fps::toggle_overlay(),
+                        _ => {}
+                    }
                     if let Some(action) = action {
                         for (label, _) in app.webview_windows() {
                             if shell::is_dock(&label) {
@@ -608,6 +643,11 @@ pub fn run() {
             audio_set_default,
             volume_get,
             volume_change,
+            fps_state,
+            fps_set_running,
+            fps_set_overlay,
+            fps_set_moving,
+            fps_enable_game_capture,
             set_hit_rects,
             set_watch_outside,
             dock_focus,
@@ -632,6 +672,7 @@ pub fn run() {
             media::init(handle);
             audio::init(handle);
             system::init(handle);
+            fps::init(handle);
             apply_hotkeys(handle);
             Ok(())
         })

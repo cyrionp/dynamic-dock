@@ -81,6 +81,10 @@ pub struct Hotkeys {
     pub bar3: String,
     pub toggle_dock: String,
     pub toggle_cat: String,
+    /// Start or stop the FPS counter.
+    pub toggle_fps: String,
+    /// Show or hide the FPS counter over the screen.
+    pub toggle_fps_overlay: String,
 }
 
 struct Store {
