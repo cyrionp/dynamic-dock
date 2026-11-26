@@ -85,6 +85,8 @@ pub struct Hotkeys {
     pub toggle_fps: String,
     /// Show or hide the FPS counter over the screen.
     pub toggle_fps_overlay: String,
+    /// Open or close Dynamic Launcher.
+    pub open_launcher: String,
 }
 
 struct Store {
@@ -147,7 +149,7 @@ pub fn set(app: &AppHandle, value: Value) -> Result<(), String> {
     Ok(())
 }
 
-fn section<T: for<'de> Deserialize<'de> + Default>(key: &str) -> T {
+pub(crate) fn section<T: for<'de> Deserialize<'de> + Default>(key: &str) -> T {
     store()
         .lock()
         .ok()

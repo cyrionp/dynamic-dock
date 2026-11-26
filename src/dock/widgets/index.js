@@ -11,6 +11,7 @@ import { fps } from "./fps.js";
 export const WIDGETS = {
   apps,
   launcher,
+  palette: buttons.palette,
   start: buttons.start,
   search: buttons.search,
   taskview: buttons.taskview,

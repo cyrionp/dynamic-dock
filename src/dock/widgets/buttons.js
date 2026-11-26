@@ -2,7 +2,7 @@
 // plus the dock's own small pieces: show desktop, settings, separator,
 // space and the bar switcher.
 
-import { call } from "../../lib/tauri.js";
+import { call, inTauri } from "../../lib/tauri.js";
 import { icon } from "../../lib/icons.js";
 import { t } from "../../lib/i18n.js";
 import { CATALOG } from "../../lib/config.js";
@@ -94,6 +94,28 @@ export const barSwitcher = {
       if (d) ctx.showTip(d, ctx.bars[Number(d.dataset.i)].name);
     });
     el.addEventListener("pointerout", () => ctx.hideTip());
+    return {};
+  },
+};
+
+/** Opens Dynamic Launcher, which grows out of this button. */
+export const palette = {
+  render(el, item, ctx) {
+    el.innerHTML = `<button class="btn btn-palette" data-mag>${icon("sparkle")}</button>`;
+    const b = el.firstChild;
+    const tip = () => {
+      const key = ctx.hotkeys.openLauncher;
+      return key ? `${t("Dynamic Launcher")} (${key})` : t("Dynamic Launcher");
+    };
+    b.setAttribute("aria-label", t("Dynamic Launcher"));
+    b.addEventListener("click", () => {
+      ctx.hideTip();
+      const r = b.getBoundingClientRect();
+      if (!inTauri) return window.open("launcher.html", "dd-launcher", "width=760,height=580");
+      call("palette_toggle", { x: r.left + r.width / 2, y: r.top + r.height / 2 }).catch(() => {});
+    });
+    b.addEventListener("pointerenter", () => ctx.showTip(b, tip()));
+    b.addEventListener("pointerleave", () => ctx.hideTip());
     return {};
   },
 };

@@ -908,3 +908,30 @@ p.row-hint {
   opacity: 0.45;
   pointer-events: none;
 }
+
+/* Dynamic Launcher: its shortcut is taken by another app. */
+.warn-box {
+  display: flex;
+  gap: 12px;
+  margin: 4px 0 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+.warn-box > .ic {
+  color: var(--danger);
+  flex: none;
+}
+
+.warn-box p {
+  margin: 4px 0 8px;
+  color: var(--muted);
+}
+
+.warn-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

@@ -22,6 +22,20 @@ JavaScript and CSS, so the whole app stays small and light on RAM and CPU.
   from the context menu, an animated bounce on launch and notification
   counts (WhatsApp, Teams and other Store apps that badge their taskbar
   icon). Clicking an app with several windows shows a preview of each.
+- **Dynamic Launcher.** Press `Alt+Space` (or the dock's ✦ button, which
+  the box grows out of) and type: apps from Start, open windows, Windows
+  settings pages and tools, commands for the dock and the computer (lock,
+  sleep, shut down, empty the Recycle Bin, switch bars, hide the cat…), a
+  calculator (`12*(3+4)`, `2^10`, `200*15%`; Enter copies the answer) and a
+  web search. It learns what you pick for what you type and puts it first
+  next time. `↵` opens or switches to a running app, `⇧↵` opens a new
+  window, `Ctrl+↵` runs as administrator and `Ctrl+K` shows more actions
+  (open file location, copy path, pin to the dock…). Start with `=` for
+  sums only, `>` for commands, `w ` for windows, `?` for the web. Searching
+  happens in Rust in a few milliseconds and nothing runs while the box is
+  closed. If another app (PowerToys Run, for one) already holds
+  `Alt+Space`, the dock offers another shortcut; **Settings → Launcher** has
+  the rest.
 - **Folders.** Drag an app onto another and hold to make a folder, as on a
   phone; drop more apps on it, rename it, take apps out or ungroup it.
 - **30+ widgets:** apps, launcher, Start, search, Task View, Widgets,
@@ -108,9 +122,13 @@ Layout:
 
 - `src-tauri/src` – Rust: `shell.rs` (taskbar takeover, AppBar, fullscreen
   detection), `tasks.rs` (window tracking), `icons.rs`, `apps.rs`,
-  `system.rs`, `volume.rs`, `media.rs`, `audio.rs`, `config.rs`, `lib.rs`.
+  `system.rs`, `volume.rs`, `media.rs`, `audio.rs`, `config.rs`, `palette/`
+  (Dynamic Launcher), `lib.rs`.
 - `src/dock` – the dock window and its widgets (`src/dock/widgets`).
 - `src/settings` – the settings window.
+- `src/launcher` – Dynamic Launcher's page; its search lives in
+  `src-tauri/src/palette` (fuzzy matching, learning, calculator, the
+  built-in settings pages and commands).
 - `src/lib` – shared config schema, themes, icons and translations.
 
 ## Releasing
