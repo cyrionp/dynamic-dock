@@ -2,7 +2,7 @@
 // it and redraws. Nothing here needs a "Save" button.
 
 import "./settings.css";
-import { call, inTauri } from "../lib/tauri.js";
+import { call, on, inTauri } from "../lib/tauri.js";
 import {
   loadConfig,
   saveConfig,
@@ -91,6 +91,7 @@ const SECTIONS = [
   ["motion", "sparkle", "Animations"],
   ["cat", "cat", "Cat"],
   ["bars", "layers", "Bars & widgets"],
+  ["launcher", "search", "Launcher"],
   ["hotkeys", "keyboard", "Shortcuts"],
   ["updates", "download", "Updates & about"],
 ];
@@ -333,8 +334,46 @@ function bars() {
     ).join("")}</div>`;
 }
 
+const hk = (path, label, hint = "") =>
+  row(label, `<div class="hk"><input class="input hk-input" data-hotkey="${path}" value="${escapeHtml(get(path))}" placeholder="${t("Click, then press keys")}" readonly /><button class="icon-btn" data-hk-clear="${path}" title="${t("Clear")}">${icon("close")}</button></div>`, hint);
+
+let paletteStatus = null;
+
+function launcher() {
+  const off = config.palette.enabled ? "" : " is-off";
+  const taken = paletteStatus && !paletteStatus.hotkeyOk && config.palette.enabled && config.hotkeys.openLauncher;
+  return `<h2>${t("Launcher")}</h2>
+    <p class="lead">${t("Dynamic Launcher finds apps, open windows, Windows settings and dock commands as you type, does sums and searches the web. It learns what you pick and puts it first next time.")}</p>
+    <div class="card">
+      ${row(t("Dynamic Launcher"), toggle("palette.enabled"))}
+      ${hk("hotkeys.openLauncher", t("Shortcut"), t("Alt+Space by default. The dock's launcher button opens it too."))}
+      ${
+        taken
+          ? `<div class="warn-box">${icon("info")}<div><b>${t("{key} is taken", { key: escapeHtml(config.hotkeys.openLauncher) })}</b><p>${t("Another app (PowerToys Run, for one) already uses this shortcut, so it can't open Dynamic Launcher.")}</p>
+              <div class="warn-btns"><button class="ghost" data-launcher-key="Ctrl+Alt+Space">${t("Use {key}", { key: "Ctrl+Alt+Space" })}</button><button class="ghost" data-launcher-key="Ctrl+Shift+Space">${t("Use {key}", { key: "Ctrl+Shift+Space" })}</button></div></div></div>`
+          : ""
+      }
+    </div>
+    <div class="cat-opts${off}">
+    <h3>${t("What it searches")}</h3>
+    <div class="card">
+      ${row(t("Apps"), `<span class="row-hint">${t("Always")}</span>`, t("Everything in Start, and the Shortcuts widget's entries."))}
+      ${row(t("Open windows"), toggle("palette.windows"), t("Type w and a space to search only windows."))}
+      ${row(t("Windows settings and tools"), toggle("palette.settings"), t("Display, Wi-Fi, Bluetooth, Device Manager…"))}
+      ${row(t("Commands"), toggle("palette.commands"), t("Lock, sleep, shut down, empty the Recycle Bin, switch bars, hide the cat… Type > for commands only."))}
+      ${row(t("Calculator"), toggle("palette.calc"), t("Type a sum: 12*(3+4), 2^10, 200*15%, sqrt(2). Enter copies the answer."))}
+      ${row(t("Web search"), toggle("palette.web"), t("The last row searches the web. Type ? for the web only."))}
+      ${row(t("Search engine"), select("palette.webEngine", { google: "Google", bing: "Bing", duckduckgo: "DuckDuckGo", yandex: "Yandex" }))}
+    </div>
+    <h3>${t("Speed and memory")}</h3>
+    <div class="card">
+      ${row(t("Keep it ready"), toggle("palette.keepReady"), t("Opens at once, for about 20 MB of memory. Turned off, it starts when asked for (a little slower) and frees the memory when closed."))}
+      ${row(t("What it learned"), `<button class="ghost" data-launcher-forget>${icon("trash")} ${t("Forget")}</button>`, t("Which results you pick, kept on this computer only."))}
+    </div>
+    </div>`;
+}
+
 function hotkeys() {
-  const hk = (path, label) => row(label, `<div class="hk"><input class="input hk-input" data-hotkey="${path}" value="${escapeHtml(get(path))}" placeholder="${t("Click, then press keys")}" readonly /><button class="icon-btn" data-hk-clear="${path}" title="${t("Clear")}">${icon("close")}</button></div>`);
   return `<h2>${t("Shortcuts")}</h2>
     <p class="lead">${t("Work anywhere in Windows. Click a box and press the keys you want; Backspace clears it.")}</p>
     <div class="card">
@@ -347,6 +386,7 @@ function hotkeys() {
       ${hk("hotkeys.toggleCat", t("Hide or show the cat"))}
       ${hk("hotkeys.toggleFps", t("Start or stop the FPS counter"))}
       ${hk("hotkeys.toggleFpsOverlay", t("Show or hide the FPS counter on the screen"))}
+      ${hk("hotkeys.openLauncher", t("Open Dynamic Launcher"))}
     </div>`;
 }
 
@@ -389,7 +429,7 @@ function updates() {
 
 function render() {
   const scroll = document.querySelector(".content")?.scrollTop ?? 0;
-  const body = { general, look, motion, cat, bars, hotkeys, updates }[section]();
+  const body = { general, look, motion, cat, bars, launcher, hotkeys, updates }[section]();
   app.innerHTML = `<nav class="side">
       <div class="brand"><span class="logo"></span><div><b>Dynamic Dock</b><small>${t("Settings")}</small></div></div>
       ${SECTIONS.map(([id, ic, label]) => `<button class="nav ${id === section ? "is-on" : ""}" data-section="${id}">${icon(ic)}<span>${t(label)}</span></button>`).join("")}
@@ -625,6 +665,17 @@ app.addEventListener("click", async (e) => {
     }
   }
 
+  /* launcher */
+  if (d.launcherKey) {
+    config.hotkeys.openLauncher = d.launcherKey;
+    return changed({ rerender: true });
+  }
+  if ("launcherForget" in d) {
+    if (!(await confirmBox(t("Forget which results you picked? The launcher starts learning again from scratch.")))) return;
+    await call("palette_forget_all").catch(() => {});
+    return flash();
+  }
+
   /* hotkeys */
   if (d.hkClear) {
     set(d.hkClear, "");
@@ -692,7 +743,7 @@ app.addEventListener("change", async (e) => {
   if (!el.dataset.path) return;
   if (el.type === "checkbox") {
     setByPath(el.dataset.path, el.checked);
-    return changed({ rerender: el.dataset.path.startsWith("@") || el.dataset.path === "cat.enabled" });
+    return changed({ rerender: el.dataset.path.startsWith("@") || el.dataset.path === "cat.enabled" || el.dataset.path === "palette.enabled" });
   }
   if (el.tagName === "SELECT") {
     setByPath(el.dataset.path, el.value);
@@ -838,6 +889,14 @@ async function boot() {
     update = s;
     if (section === "updates") render();
   });
+  if (inTauri) {
+    paletteStatus = await call("palette_status").catch(() => null);
+    on("palette://status", (st) => {
+      paletteStatus = st;
+      if (section === "launcher") render();
+    });
+    if (section === "launcher") render();
+  }
   readVersion().catch(() => {});
   onConfigChange((next) => {
     // Changes made from the dock itself (pinning, a city…).

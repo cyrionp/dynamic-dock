@@ -13,6 +13,7 @@ mod fps;
 mod icons;
 mod log;
 mod media;
+mod palette;
 mod previews;
 mod shell;
 mod system;
@@ -237,11 +238,12 @@ fn open_settings_window(app: &AppHandle) {
 /* ---------------- hotkeys ---------------- */
 
 static HOTKEYS: Mutex<Vec<(u32, &'static str)>> = Mutex::new(Vec::new());
-static HOTKEY_CONFIG: Mutex<Option<config::Hotkeys>> = Mutex::new(None);
+static HOTKEY_CONFIG: Mutex<Option<(config::Hotkeys, bool)>> = Mutex::new(None);
 
 /// Registers the hotkeys from the settings (again, when they changed).
 fn apply_hotkeys(app: &AppHandle) {
-    let wanted = config::hotkeys();
+    let launcher = palette::settings().enabled;
+    let wanted = (config::hotkeys(), launcher);
     {
         let Ok(mut last) = HOTKEY_CONFIG.lock() else { return };
         if last.as_ref() == Some(&wanted) {
@@ -249,6 +251,7 @@ fn apply_hotkeys(app: &AppHandle) {
         }
         *last = Some(wanted.clone());
     }
+    let wanted = wanted.0;
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
     let mut map = Vec::new();
@@ -262,15 +265,24 @@ fn apply_hotkeys(app: &AppHandle) {
         (&wanted.toggle_cat, "toggleCat"),
         (&wanted.toggle_fps, "toggleFps"),
         (&wanted.toggle_fps_overlay, "toggleFpsOverlay"),
+        (&wanted.open_launcher, "openLauncher"),
     ] {
-        if accel.trim().is_empty() {
+        if accel.trim().is_empty() || (action == "openLauncher" && !launcher) {
             continue;
         }
-        if let Ok(shortcut) = accel.parse::<Shortcut>() {
-            if gs.register(shortcut).is_ok() {
+        let ok = match accel.parse::<Shortcut>() {
+            Ok(shortcut) if gs.register(shortcut).is_ok() => {
                 map.push((shortcut.id(), action));
+                true
             }
+            _ => false,
+        };
+        if action == "openLauncher" {
+            palette::set_hotkey_ok(app, ok);
         }
+    }
+    if !launcher || wanted.open_launcher.trim().is_empty() {
+        palette::set_hotkey_ok(app, true);
     }
     if let Ok(mut h) = HOTKEYS.lock() {
         *h = map;
@@ -288,6 +300,7 @@ fn get_config() -> Value {
 fn save_config(value: Value, app: AppHandle) -> Result<(), String> {
     config::set(&app, value)?;
     apply_hotkeys(&app);
+    palette::apply_settings(&app);
     Ok(())
 }
 
@@ -492,6 +505,55 @@ fn set_taskbar_paused(paused: bool, app: AppHandle) {
     }
 }
 
+/* ---------------- Dynamic Launcher ---------------- */
+
+#[tauri::command]
+async fn palette_query(text: String, lang: Option<String>, app: AppHandle) -> Vec<palette::Hit> {
+    palette::query(&app, &text, lang.as_deref().unwrap_or("en"))
+}
+
+#[tauri::command]
+async fn palette_run(hit: palette::Hit, action: Option<String>, query: Option<String>, app: AppHandle) -> Result<(), String> {
+    palette::run(&app, hit, action.as_deref().unwrap_or("open"), query.as_deref().unwrap_or(""))
+}
+
+/// The dock's button: open the launcher, growing out of the button at
+/// (`x`, `y`) in the dock page.
+#[tauri::command]
+fn palette_toggle(x: Option<f64>, y: Option<f64>, window: tauri::WebviewWindow, app: AppHandle) {
+    let origin = match (x, y, window.outer_position(), window.scale_factor()) {
+        (Some(x), Some(y), Ok(p), Ok(s)) => Some((p.x as f64 + x * s, p.y as f64 + y * s)),
+        _ => None,
+    };
+    palette::toggle(&app, origin);
+}
+
+#[tauri::command]
+fn palette_hide(restore: Option<bool>, app: AppHandle) {
+    palette::hide(&app, restore.unwrap_or(false));
+}
+
+#[tauri::command]
+fn palette_ready(app: AppHandle) {
+    palette::page_ready(&app);
+}
+
+#[tauri::command]
+fn palette_status() -> palette::Status {
+    palette::status()
+}
+
+/// Windows' light or dark mode and accent colour, as the dock sees them.
+#[tauri::command]
+fn palette_env() -> shell::Env {
+    shell::env(shell::DOCK)
+}
+
+#[tauri::command]
+async fn palette_forget_all(app: AppHandle) {
+    palette::forget_all(&app);
+}
+
 /* ---------------- tray ---------------- */
 
 struct TrayPauseItem(CheckMenuItem<Wry>);
@@ -604,6 +666,7 @@ pub fn run() {
                     match action {
                         Some("toggleFps") => return fps::toggle(),
                         Some("toggleFpsOverlay") => return fps::toggle_overlay(),
+                        Some("openLauncher") => return palette::toggle(app, None),
                         _ => {}
                     }
                     if let Some(action) = action {
@@ -657,7 +720,15 @@ pub fn run() {
             set_taskbar_paused,
             set_tray_labels,
             dock_alive,
-            log_message
+            log_message,
+            palette_query,
+            palette_run,
+            palette_toggle,
+            palette_hide,
+            palette_ready,
+            palette_status,
+            palette_env,
+            palette_forget_all
         ])
         .setup(|app| {
             let handle = app.handle();
@@ -674,6 +745,13 @@ pub fn run() {
             system::init(handle);
             fps::init(handle);
             apply_hotkeys(handle);
+            // The launcher's window is made once the dock is up, so it
+            // never slows the start down.
+            let later = handle.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(4));
+                palette::apply_settings(&later);
+            });
             Ok(())
         })
         .build(tauri::generate_context!())

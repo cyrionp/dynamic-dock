@@ -47,6 +47,13 @@ export const CATALOG = {
       entries: { type: "list", label: "Shortcuts", default: [] },
     },
   },
+  palette: {
+    label: "Dynamic Launcher",
+    icon: "sparkle",
+    group: "apps",
+    blurb: "Search apps, windows, settings and sums",
+    single: true,
+  },
   start: { label: "Start", icon: "start", group: "windows", blurb: "Opens the Start menu" },
   search: { label: "Search", icon: "search", group: "windows", blurb: "Windows search" },
   taskview: { label: "Task View", icon: "taskview", group: "windows", blurb: "Windows and desktops" },
@@ -207,7 +214,7 @@ function defaultBars() {
       id: "main",
       name: "Main",
       items: {
-        left: [makeItem("start"), makeItem("search"), makeItem("taskview")],
+        left: [makeItem("start"), makeItem("palette"), makeItem("search"), makeItem("taskview")],
         center: [makeItem("apps")],
         right: [makeItem("tray"), makeItem("media", { width: 120 }), makeItem("volume"), makeItem("battery"), makeItem("clock"), makeItem("desktop")],
       },
@@ -239,6 +246,9 @@ export function defaults() {
     lang: "auto",
     // The Windows taskbar's pins are copied in once, on the first start.
     pinsImported: false,
+    // The Dynamic Launcher button is put next to Start once, for docks set
+    // up before it existed.
+    paletteAdded: false,
     shell: {
       monitors: "all",
       position: "bottom",
@@ -258,6 +268,19 @@ export function defaults() {
       toggleCat: "Ctrl+Alt+K",
       toggleFps: "Ctrl+Alt+F",
       toggleFpsOverlay: "Ctrl+Alt+O",
+      openLauncher: "Alt+Space",
+    },
+    // Dynamic Launcher (src/launcher, src-tauri/src/palette).
+    palette: {
+      enabled: true,
+      // Keep its window made and hidden, so it opens at once.
+      keepReady: true,
+      windows: true,
+      settings: true,
+      commands: true,
+      calc: true,
+      web: true,
+      webEngine: "google",
     },
     look: {
       theme: "midnight",

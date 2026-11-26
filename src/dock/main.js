@@ -5,10 +5,11 @@
 
 import "./dock.css";
 import { call, on, inTauri, isPrimaryDock } from "../lib/tauri.js";
-import { loadConfig, saveConfig, onConfigChange, ZONES } from "../lib/config.js";
+import { loadConfig, saveConfig, onConfigChange, makeItem, ZONES } from "../lib/config.js";
 import { applyLook } from "../lib/themes.js";
 import { setLang, t } from "../lib/i18n.js";
 import { icon } from "../lib/icons.js";
+import { escapeHtml } from "../lib/util.js";
 import { WIDGETS } from "./widgets/index.js";
 import { pinFromTaskbar } from "./widgets/apps.js";
 import { env as envSource } from "./data.js";
@@ -537,9 +538,62 @@ async function importTaskbarPins() {
   config = await saveConfig(config);
 }
 
+/** Docks set up before Dynamic Launcher existed get its button once, next
+ * to Start (or first on the main bar). */
+async function addPaletteButton() {
+  const all = config.bars.flatMap((b) => ZONES.flatMap((z) => b.items[z]));
+  if (!all.some((x) => x.type === "palette")) {
+    let placed = false;
+    for (const bar of config.bars) {
+      for (const z of ZONES) {
+        const i = bar.items[z].findIndex((x) => x.type === "start");
+        if (i >= 0 && !placed) {
+          bar.items[z].splice(i + 1, 0, makeItem("palette"));
+          placed = true;
+        }
+      }
+    }
+    if (!placed) config.bars[0].items.left.unshift(makeItem("palette"));
+  }
+  config.paletteAdded = true;
+  config = await saveConfig(config);
+}
+
+/** The launcher's hotkey is taken by another app: offer another one. */
+let offeredHotkey = false;
+function offerLauncherHotkey(status) {
+  if (!status || status.hotkeyOk || !status.enabled || !status.hotkey || offeredHotkey) return;
+  offeredHotkey = true;
+  const anchor = barsEl.querySelector(".bar.is-current .it-palette") || barsEl.querySelector(".bar.is-current .pill");
+  if (!anchor) return;
+  const other = status.hotkey === "Ctrl+Alt+Space" ? "Ctrl+Shift+Space" : "Ctrl+Alt+Space";
+  openPopup(anchor, {
+    width: 340,
+    className: "update-pop",
+    build(body, close) {
+      body.innerHTML = `<div class="update-row">${icon("keyboard")}<div><div class="pop-title">${t("{key} is taken", { key: escapeHtml(status.hotkey) })}</div>
+        <p class="hint">${t("Another app (PowerToys Run, for one) already uses this shortcut, so it can't open Dynamic Launcher.")}</p></div></div>
+        <div class="update-btns"><button class="chip-btn" data-later>${t("Later")}</button><button class="chip-btn" data-pick>${t("Pick another")}</button><button class="btn-primary" data-use>${t("Use {key}", { key: other })}</button></div>`;
+      body.addEventListener("click", async (e) => {
+        if (e.target.closest("[data-later]")) close();
+        if (e.target.closest("[data-pick]")) {
+          close();
+          openSettings("launcher");
+        }
+        if (e.target.closest("[data-use]")) {
+          close();
+          config.hotkeys = { ...config.hotkeys, openLauncher: other };
+          config = await saveConfig(config);
+        }
+      });
+    },
+  });
+}
+
 async function boot() {
   config = await loadConfig();
   if (inTauri && isPrimaryDock && !config.pinsImported) await importTaskbarPins();
+  if (isPrimaryDock && !config.paletteAdded) await addPaletteButton();
   applyConfig();
   rebuild();
   applyCat();
@@ -565,6 +619,14 @@ async function boot() {
   });
 
   if (inTauri) {
+    if (isPrimaryDock) {
+      on("palette://status", (st) => {
+        if (st?.hotkeyOk) offeredHotkey = false;
+        else offerLauncherHotkey(st);
+      });
+      // Registered before this page loaded: ask once it has drawn.
+      setTimeout(() => call("palette_status").then(offerLauncherHotkey).catch(() => {}), 3000);
+    }
     on("pointer://leave", () => setHovering(false));
     on("pointer://outside", () => closePopup());
     on("hotkey://action", (action) => {
